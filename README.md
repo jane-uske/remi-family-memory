@@ -17,9 +17,9 @@ This is a **local-first, private, long-term family memory operating system** tha
 - Stores everything locally as files you own forever — no cloud, no database
 - Provides health checks, full-text search, and portable exports
 
-### v0.6: Grounded Answer Protocol
+### v0.7: Cloud LLM Adapter Validation
 
-v0.6 defines and enforces a strict answer protocol: AI responses about family memories must be **evidence-based, source-traced, and refusal-safe**.
+v0.7 introduces a pluggable **LLM Adapter** layer that validates the Grounded Answer Protocol against real cloud LLMs. The long-term goal remains local-first — cloud is used here only for protocol validation.
 
 | Layer | Purpose | Format |
 |-------|---------|--------|
@@ -29,6 +29,7 @@ v0.6 defines and enforces a strict answer protocol: AI responses about family me
 | **Service** | HTTP API for reading, searching, rebuilding memory | REST JSON |
 | **Connector** | Remi integration client with source tracing + degradation | TypeScript module |
 | **Protocol** | Grounded Answer rules: evidence required, refusal on no data | `GroundedAnswer` |
+| **Adapter** | Pluggable LLM backend: deterministic (default) / cloud / local (future) | `LLMAdapter` |
 
 **Architecture evolution:**
 
@@ -38,6 +39,7 @@ v0.3: Events → Memories → Context (AI-readable)
 v0.4: Events → Memories → Context → Service (AI-queryable)
 v0.5: Events → Memories → Context → Service → Connector (AI-consumable, verified)
 v0.6: Events → Memories → Context → Service → Connector → Protocol (grounded, auditable)
+v0.7: Events → ... → Protocol → Adapter (pluggable LLM, cloud-validated)
 ```
 
 ## Commands
@@ -182,12 +184,113 @@ npm run connector
 npm run connector:degradation
 ```
 
-### Current Limitations (v0.5)
+### Current Limitations (v0.7)
 
-- Connector uses deterministic template matching, not a real LLM
-- Answer quality depends on keyword extraction (not semantic understanding)
-- This is a **verification layer**, not a production Remi plugin
-- Future versions will replace the template engine with actual Remi integration
+- Cloud LLM is for **protocol validation only** — production goal is local-first
+- Deterministic adapter uses keyword matching, not semantic understanding
+- Cloud adapter requires env vars; without them, system falls back to deterministic
+- Local LLM adapter reserved for future implementation
+- This is a **validation layer**, not a production Remi plugin yet
+
+## LLM Adapter Layer (v0.7)
+
+### Architecture
+
+The adapter layer decouples answer generation from the protocol enforcement:
+
+```
+┌──────────────────────────────────────┐
+│         RemiConnector                │
+│   collect evidence → toAdapterEvidence │
+└───────────────┬──────────────────────┘
+                │ LLMInput
+                ▼
+┌──────────────────────────────────────┐
+│         LLMAdapter (interface)       │
+│   generate(input) → LLMOutput        │
+├──────────┬───────────┬───────────────┤
+│Deterministic│  Cloud   │   Local      │
+│ (default)   │(validate)│  (future)    │
+└──────────┴───────────┴───────────────┘
+```
+
+### Adapter Types
+
+| Type | Purpose | When Used |
+|------|---------|-----------|
+| `deterministic` | Template-based, no external calls | Default (no env vars) |
+| `cloud` | Real LLM via OpenAI-compatible API | When env vars configured |
+| `local` | Local LLM (reserved) | Not yet implemented |
+
+### Configuration (Environment Variables)
+
+```bash
+# Enable cloud adapter (all 3 required):
+FAMILY_MEMORY_LLM_PROVIDER=openai     # or "anthropic"
+FAMILY_MEMORY_LLM_API_KEY=sk-...      # API key (NEVER commit to repo)
+FAMILY_MEMORY_LLM_MODEL=gpt-4o-mini   # Model name
+
+# Optional:
+FAMILY_MEMORY_LLM_BASE_URL=https://...  # Custom endpoint
+```
+
+Without these env vars, the system uses the deterministic adapter with zero external dependencies.
+
+### What the Cloud Adapter Sends
+
+The adapter receives a sanitized `EvidencePayload` containing ONLY:
+
+```typescript
+{
+  question: string                    // User's question
+  evidence: {
+    query: string                     // Search query used
+    items: [{
+      source: 'memory' | 'event' | 'context' | 'search'
+      memoryId?: string
+      date?: string
+      title?: string
+      snippet: string                 // Brief text excerpt
+      importance?: 'core' | 'high' | 'medium' | 'low'
+    }]
+    fromContext: boolean
+    fromSearch: boolean
+  }
+  promptContract: 'grounded_answer_v1'
+}
+```
+
+### What is NEVER Sent
+
+- `blocked_from_ai` events or content
+- Raw event objects
+- File paths (`data/events/`, `data/inbox/`, etc.)
+- Attachment file data
+- Full report text
+- Owner-facing API data (`/api/events`)
+- Any content from report-type search results
+
+### Output Validation
+
+The cloud adapter validates every LLM response before returning:
+
+1. **No sources → reject**: If `answerable=true` but `sourceRefs` is empty → force refusal
+2. **Phantom sources → reject**: If any sourceRef doesn't match evidence items → force refusal
+3. **Source filtering**: Only sourceRefs matching real evidence memoryIds/eventIds pass through
+
+### Fallback Strategy
+
+```
+Cloud adapter called
+  → Payload audit (security check)
+  → Call cloud LLM
+  │
+  ├─ LLM call fails (network, auth, timeout) → fall back to DeterministicAdapter
+  ├─ LLM output invalid (no JSON, bad schema) → fall back to DeterministicAdapter
+  └─ LLM output valid → validate sources → return validated output
+```
+
+The system ALWAYS produces an answer — cloud failure is graceful, never a hard error.
 
 ## Grounded Answer Protocol (v0.6)
 
@@ -482,22 +585,29 @@ Remi starts a conversation
 ```
 ┌──────────────────────────────────┐
 │           Remi / AI              │
-│  (future: real LLM integration) │
+│  (future: Remi main project)    │
 └─────────────┬────────────────────┘
               │ uses
               ▼
 ┌──────────────────────────────────┐
-│       RemiConnector (v0.5)       │
+│       RemiConnector (v0.5+)      │
 │  connect → loadContext → answer  │
 │  source tracing + degradation    │
 └─────────────┬────────────────────┘
-              │ HTTP calls
+              │ delegates to
+              ▼
+┌──────────────────────────────────┐
+│      LLM Adapter (v0.7)          │
+│  deterministic | cloud | local   │
+│  payload safety + output valid.  │
+└─────────────┬────────────────────┘
+              │ reads (via service)
               ▼
 ┌──────────────────────────────────┐
 │   Local Memory Service (v0.4)    │
-│   /api/health  /api/context      │
-│   /api/memories  /api/search     │
-│   /api/rebuild                   │
+│   /api/ai/health  /api/ai/context│
+│   /api/ai/memories /api/ai/search│
+│   /api/ai/rebuild                │
 └─────────────┬────────────────────┘
               │ reads
               ▼
@@ -632,6 +742,7 @@ This separation means:
 remi-family-memory/
 ├── src/
 │   ├── types.ts           # All type definitions + SCHEMA_VERSION
+│   ├── paths.ts           # Central data directory resolver (test isolation)
 │   ├── parser.ts          # Markdown → BabyEvent
 │   ├── store.ts           # Event store
 │   ├── scanner.ts         # Notes inbox scanner
@@ -644,8 +755,16 @@ remi-family-memory/
 │   ├── export.ts          # Full archive export
 │   ├── doctor.ts          # Data health check
 │   ├── server.ts          # Local Memory Service (Express API + static)
-│   ├── connector.ts       # Remi Connector client (v0.5)
+│   ├── connector.ts       # Remi Connector client (v0.5+)
 │   ├── connector-demo.ts  # Connector verification demo
+│   ├── adapters/          # LLM Adapter layer (v0.7)
+│   │   ├── types.ts       # LLMAdapter interface, LLMInput/Output types
+│   │   ├── index.ts       # Adapter factory + env detection
+│   │   ├── deterministic.ts  # Template-based adapter (default)
+│   │   └── cloud.ts       # Cloud LLM adapter with validation
+│   ├── tests/
+│   │   ├── privacy.test.ts   # Privacy & protocol invariant tests
+│   │   └── adapter.test.ts   # Adapter selection, safety, validation tests
 │   └── cli.ts             # CLI entry point
 ├── web/
 │   ├── index.html         # Timeline dashboard
@@ -687,25 +806,28 @@ remi-family-memory/
 
 ## Roadmap
 
-### v0.7 — Real LLM Integration
-- Replace template engine with actual LLM prompt integration
-- Remi main project loads connector as a dependency
-- LLM answers constrained by Prompt Contract
-- Verify LLM follows refusal rules in practice
+### v0.7 — Cloud LLM Adapter Validation ✓
+- Pluggable LLM adapter layer (deterministic / cloud / local)
+- Cloud adapter validates Grounded Answer Protocol against real LLMs
+- Payload security: only EvidencePack sent, never raw events or blocked content
+- Output validation: reject phantom sources, require evidence backing
+- Fallback to deterministic on cloud failure
+- API key via env vars only (never committed)
 
-### v0.8 — Media Intelligence
+### v0.8 — Local LLM Integration
+- Replace cloud validation with local LLM (Ollama, llama.cpp)
+- True local-first: no network calls by default
+- Same adapter interface, same protocol guarantees
+
+### v0.9 — Media Intelligence
 - Photo EXIF extraction
 - Voice memo transcription
 - Document OCR
 - Auto-event creation from media metadata
 
-### v0.9 — Multi-child & Permissions
-- Multiple child profiles
-- Family member access control
-- Shared vs private memories
-
 ### v1.0 — Production
 - Docker/NAS deployment
+- Multi-child & family member permissions
 - External integrations (Immich, Paperless-ngx, Baby Buddy)
 - Long-term timeline visualization
 - PDF/static-site export

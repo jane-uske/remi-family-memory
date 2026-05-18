@@ -1,4 +1,6 @@
 import type { MemoryRecord, MemoryImportance } from './types.js'
+import { createAdapter } from './adapters/index.js'
+import type { LLMAdapter, EvidencePayload, EvidencePayloadItem } from './adapters/index.js'
 
 const DEFAULT_BASE_URL = 'http://localhost:3456'
 
@@ -137,10 +139,16 @@ export class RemiConnector {
   private token: string | null
   private status: ConnectorStatus = 'unavailable'
   private context: ContextResponse | null = null
+  private adapter: LLMAdapter
 
   constructor(baseUrl = DEFAULT_BASE_URL, token: string | null = null) {
     this.baseUrl = baseUrl
     this.token = token
+    this.adapter = createAdapter()
+  }
+
+  getAdapterType(): string {
+    return this.adapter.type
   }
 
   private headers(): Record<string, string> {
@@ -231,63 +239,52 @@ export class RemiConnector {
     }
 
     const evidence = await this.collectEvidence(question)
-    const isPartial = this.isPartialEvidence(question, evidence)
 
-    if (evidence.items.length === 0 && !isPartial) {
-      return {
-        question,
-        answerable: false,
-        answer: '当前家庭记忆库里没有找到相关记录，无法确认。',
-        confidence: 'none',
-        reason: 'no_evidence',
-        sources: [],
-        evidence,
-        serviceStatus: this.status,
-        generatedAt: now,
-      }
+    const adapterInput = {
+      question,
+      evidence: this.toAdapterEvidence(evidence),
+      promptContract: 'grounded_answer_v1',
     }
 
-    if (isPartial) {
-      const sources = evidence.items.map((e) => ({
-        memoryId: e.memoryId,
-        sourceEventId: e.sourceEventId,
-        date: e.date,
-        title: e.title,
-        path: e.path,
-      }))
-      return {
-        question,
-        answerable: evidence.items.length > 0,
-        answer: this.buildPartialAnswer(question, evidence),
-        confidence: 'low',
-        reason: 'partial_evidence',
-        sources,
-        evidence,
-        serviceStatus: this.status,
-        generatedAt: now,
-      }
-    }
+    const output = await this.adapter.generate(adapterInput)
 
-    const answer = this.buildGroundedAnswer(question, evidence)
-    const sources = evidence.items.map((e) => ({
-      memoryId: e.memoryId,
-      sourceEventId: e.sourceEventId,
-      date: e.date,
-      title: e.title,
-      path: e.path,
+    const sources = output.sourceRefs.map((ref) => ({
+      memoryId: ref.memoryId,
+      sourceEventId: ref.sourceEventId,
+      date: ref.date,
+      title: ref.title,
     }))
-    const confidence = this.assessConfidence(evidence)
 
     return {
       question,
-      answerable: true,
-      answer,
-      confidence,
-      reason: 'evidence_found',
+      answerable: output.answerable,
+      answer: output.answer,
+      confidence: output.confidence,
+      reason: output.reason,
       sources,
       evidence,
       serviceStatus: this.status,
       generatedAt: now,
+    }
+  }
+
+  private toAdapterEvidence(evidence: EvidencePack): EvidencePayload {
+    return {
+      query: evidence.query,
+      items: evidence.items
+        .filter((i) => i.source !== 'report')
+        .map((i): EvidencePayloadItem => ({
+          source: i.source === 'report' ? 'search' : i.source as EvidencePayloadItem['source'],
+          memoryId: i.memoryId,
+          sourceEventId: i.sourceEventId,
+          date: i.date,
+          title: i.title,
+          snippet: i.snippet,
+          importance: i.importance,
+        })),
+      fromContext: evidence.fromContext,
+      fromSearch: evidence.fromSearch,
+      collectedAt: evidence.collectedAt,
     }
   }
 
@@ -401,85 +398,6 @@ export class RemiConnector {
     }
 
     return items
-  }
-
-  private isPartialEvidence(question: string, evidence: EvidencePack): boolean {
-    const broadPatterns = ['身体状态', '发育情况', '整体', '最近怎么样', '健康状况', '状态怎么样']
-    const isBroad = broadPatterns.some((bp) => question.includes(bp))
-    if (isBroad) return true
-
-    return false
-  }
-
-  private assessConfidence(evidence: EvidencePack): Confidence {
-    if (evidence.items.length === 0) return 'none'
-
-    const hasCoreOrHigh = evidence.items.some((e) => e.importance === 'core' || e.importance === 'high')
-    const hasMultiple = evidence.items.length >= 2
-    const hasMemory = evidence.items.some((e) => e.source === 'memory' || e.source === 'context')
-
-    if (hasCoreOrHigh && hasMemory) return 'high'
-    if (hasMemory && hasMultiple) return 'high'
-    if (hasMemory) return 'medium'
-    return 'low'
-  }
-
-  private buildGroundedAnswer(question: string, evidence: EvidencePack): string {
-    const items = evidence.items
-
-    if (question.includes('核心记忆')) {
-      const coreItems = items.filter((e) => e.importance === 'core')
-      if (coreItems.length > 0) {
-        return `当前核心记忆有 ${coreItems.length} 条：${coreItems.map((e) => `${e.date}「${e.title}」`).join('；')}`
-      }
-    }
-
-    if (question.includes('胎动')) {
-      const fetalItem = items.find((e) => e.title?.includes('胎动'))
-      if (fetalItem) {
-        return `根据家庭记忆记录（${fetalItem.date}）：${fetalItem.snippet}`
-      }
-    }
-
-    if (question.includes('孕检')) {
-      const checkupItem = items.find((e) => e.title?.includes('孕检'))
-      if (checkupItem) {
-        return `根据家庭记忆记录（${checkupItem.date}）：${checkupItem.title}。${checkupItem.snippet}`
-      }
-    }
-
-    if (question.includes('记忆系统') || question.includes('家庭记忆')) {
-      const systemItem = items.find((e) => e.title?.includes('家庭记忆'))
-      if (systemItem) {
-        return `根据家庭记忆记录（${systemItem.date}）：${systemItem.title}。${systemItem.snippet}`
-      }
-    }
-
-    const best = items[0]
-    return `根据家庭记忆记录（${best.date}）：${best.title}。${best.snippet}`
-  }
-
-  private buildPartialAnswer(question: string, evidence: EvidencePack): string {
-    const items = evidence.items
-
-    if (items.length === 0) {
-      return `当前家庭记忆库里没有找到足够的相关记录来完整回答该问题。如需更准确的回答，请补充更多家庭记录。`
-    }
-
-    const dates = [...new Set(items.map((e) => e.date).filter(Boolean))]
-    const titles = items.map((e) => e.title).filter(Boolean).slice(0, 3)
-
-    let prefix = `目前只找到 ${items.length} 条相关记录`
-    if (dates.length > 0) {
-      prefix += `（${dates.join('、')}）`
-    }
-
-    let detail = ''
-    if (titles.length > 0) {
-      detail = `：${titles.join('、')}`
-    }
-
-    return `${prefix}${detail}，不能据此完整回答该问题。如需更准确的回答，请补充更多家庭记录。`
   }
 }
 
