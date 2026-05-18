@@ -137,9 +137,43 @@ switch (command) {
     break
   }
 
+  case 'intake-assets': {
+    console.log('Running asset intake...')
+    const { intakeAssets } = await import('./intake.js')
+    const { draftsCreated, skipped } = await intakeAssets()
+    console.log(`Done. ${draftsCreated} draft(s) created, ${skipped} attachment(s) already drafted.`)
+    break
+  }
+
   case 'sync': {
     const ok = runSync()
     if (!ok) process.exit(1)
+    break
+  }
+
+  case 'extract-ocr': {
+    console.log('Re-running OCR for pending drafts missing sidecars...')
+    const { loadPendingDrafts, loadOcrResult, saveOcrSidecar } = await import('./drafts.js')
+    const { loadAttachments } = await import('./attachments.js')
+    const { extractOcrForAttachment } = await import('./ocr.js')
+    const pending = loadPendingDrafts()
+    const attachments = loadAttachments()
+    const attachmentMap = new Map(attachments.map((a) => [a.attachmentId, a]))
+    let extracted = 0
+    let skippedOcr = 0
+    for (const draft of pending) {
+      for (const attId of draft.attachmentIds) {
+        const existing = loadOcrResult(attId)
+        if (existing) { skippedOcr++; continue }
+        const att = attachmentMap.get(attId)
+        if (!att) continue
+        const r = await extractOcrForAttachment(att)
+        saveOcrSidecar(r.result, r.text)
+        extracted++
+        console.log(`  [${r.result.status}] ${att.originalFilename}`)
+      }
+    }
+    console.log(`Done. ${extracted} extracted, ${skippedOcr} already had sidecars.`)
     break
   }
 
@@ -152,6 +186,8 @@ switch (command) {
     console.log('  sync              Scan + build-memory + context + doctor (daily workflow)')
     console.log('  scan              Scan inbox (notes + assets)')
     console.log('  scan-assets       Scan assets inbox only')
+    console.log('  intake-assets     Generate draft notes from unlinked attachments')
+    console.log('  extract-ocr       Re-run OCR for pending drafts missing sidecars')
     console.log('  serve             Start the timeline web server')
     console.log('  dev               Scan + serve')
     console.log('  report [YYYY-MM]  Generate monthly report')

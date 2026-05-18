@@ -57,11 +57,18 @@ export function parseMarkdownNote(
   const sensitivity = frontmatter.sensitivity || 'normal'
 
   const isRemiCapture = frontmatter.source === 'remi'
+  const isAssetIntake = frontmatter.source === 'asset_intake'
   const source = isRemiCapture
     ? { kind: 'manual' as const, path: sourcePath, externalId: 'remi' }
-    : { kind: 'folder' as const, path: sourcePath }
+    : isAssetIntake
+      ? { kind: 'document' as const, path: sourcePath, externalId: 'asset_intake' }
+      : { kind: 'folder' as const, path: sourcePath }
 
   const confirmedByParent = frontmatter.confirmedByParent === true
+
+  const attachmentIds: string[] | undefined = Array.isArray(frontmatter.attachmentIds)
+    ? frontmatter.attachmentIds
+    : undefined
 
   const now = new Date().toISOString()
 
@@ -74,6 +81,7 @@ export function parseMarkdownNote(
     title,
     summary,
     source,
+    attachmentIds,
     people,
     tags,
     sensitivity,

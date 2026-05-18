@@ -12,6 +12,9 @@ import { runDoctor } from './doctor.js'
 import { SCHEMA_VERSION } from './types.js'
 import { RemiMemoryAdapter } from './remi-adapter.js'
 import { writeInboxNote, checkStageGuardrail, getCurrentStage } from './capture.js'
+import { loadPendingDrafts, confirmDraft, rejectDraft } from './drafts.js'
+import { DraftCapability } from './draft-capability.js'
+import type { DraftSessionState } from './draft-capability.js'
 import type { Request, Response, NextFunction } from 'express'
 
 function getToken(): string | null {
@@ -235,6 +238,60 @@ export function startServer(port = 3456) {
     res.json(result)
   })
 
+  app.get('/api/ai/drafts/pending', (_req, res) => {
+    const drafts = loadPendingDrafts()
+    res.json({ total: drafts.length, drafts })
+  })
+
+  app.post('/api/ai/drafts/:draftId/confirm', (req, res) => {
+    const { draftId } = req.params
+    const { title, date, type, summary, tags } = req.body || {}
+    const overrides: Record<string, unknown> = {}
+    if (title) overrides.title = title
+    if (date) overrides.date = date
+    if (type) overrides.type = type
+    if (summary) overrides.summary = summary
+    if (tags) overrides.tags = tags
+
+    const result = confirmDraft(draftId, Object.keys(overrides).length > 0 ? overrides as any : undefined)
+    if (!result.ok) {
+      const status = result.error === 'not_found' ? 404 : 400
+      res.status(status).json(result)
+      return
+    }
+    res.json(result)
+  })
+
+  app.post('/api/ai/drafts/:draftId/reject', (req, res) => {
+    const { draftId } = req.params
+    const result = rejectDraft(draftId)
+    if (!result.ok) {
+      const status = result.error === 'not_found' ? 404 : 400
+      res.status(status).json(result)
+      return
+    }
+    res.json(result)
+  })
+
+  app.post('/api/ai/drafts/chat', (req, res) => {
+    const { input, sessionState } = req.body || {}
+    if (!input || typeof input !== 'string') {
+      res.status(400).json({ error: 'Missing required field: input (string)' })
+      return
+    }
+
+    const cap = new DraftCapability()
+    if (sessionState) {
+      cap.setState(sessionState as DraftSessionState)
+    }
+
+    const result = cap.handle(input)
+    res.json({
+      ...result,
+      sessionState: cap.getState(),
+    })
+  })
+
   const askAdapter = new RemiMemoryAdapter({
     enabled: true,
     serviceUrl: `http://localhost:${port}`,
@@ -277,6 +334,10 @@ export function startServer(port = 3456) {
     console.log(`    Search:      GET  /api/ai/search?q=keyword`)
     console.log(`    Ask:         POST /api/ai/ask`)
     console.log(`    Capture:     POST /api/ai/capture`)
+    console.log(`    Drafts:      GET  /api/ai/drafts/pending`)
+    console.log(`    Confirm:     POST /api/ai/drafts/:id/confirm`)
+    console.log(`    Reject:      POST /api/ai/drafts/:id/reject`)
+    console.log(`    Draft Chat:  POST /api/ai/drafts/chat`)
     console.log(`    Rebuild:     POST /api/ai/rebuild`)
     console.log()
     console.log('  Owner API (no auth, web dashboard):')

@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = '1.0.0'
+export const SCHEMA_VERSION = '1.1.1'
 
 // --- Event Types ---
 
@@ -165,4 +165,42 @@ export type SearchResult = {
   importance?: MemoryImportance
   memoryId?: string
   sourceEventId?: string
+}
+
+// --- OCR ---
+
+export type OcrStatus = 'extracted' | 'no_text' | 'no_extractor' | 'error'
+
+export type OcrResult = {
+  attachmentId: string
+  attachmentType: AttachmentType
+  extractorId: string
+  status: OcrStatus
+  charCount: number
+  pageCount?: number
+  extractedAt: string
+  errorMessage?: string
+  schemaVersion: string
+}
+
+// --- Draft Note (Asset Intake) ---
+
+export type DraftNote = {
+  draftId: string
+  batchId: string
+  status: 'pending' | 'confirmed' | 'rejected'
+  inferredDate: string | null
+  inferredTitle: string | null
+  inferredType: BabyEventType | null
+  attachmentIds: string[]
+  originalFilenames: string[]
+  source: 'asset_intake'
+  reviewStatus: 'draft'
+  captureStatus: 'pending_parent_review'
+  uncertainFields: string[]
+  ocrStatus?: OcrStatus | 'partial'
+  ocrAttachmentCount?: number
+  ocrExtractedCount?: number
+  createdAt: string
+  confirmedAt?: string
 }

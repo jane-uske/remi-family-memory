@@ -6,6 +6,8 @@ import { listEvents, listAISafeEvents } from './store.js'
 import { loadProfile } from './profile.js'
 import { loadAttachments } from './attachments.js'
 import { loadMemories } from './memory.js'
+import { loadPendingDrafts, ocrDir } from './drafts.js'
+import type { OcrResult } from './types.js'
 
 type CheckStatus = 'PASS' | 'WARN' | 'FAIL'
 type CheckResult = { name: string; status: CheckStatus; detail: string }
@@ -174,12 +176,98 @@ export function runDoctor(): CheckResult[] {
     results.push({ name: 'Export directory', status: 'FAIL', detail: 'Cannot create export directory' })
   }
 
+  // 14. Pending drafts count
+  const pendingDrafts = loadPendingDrafts()
+  if (pendingDrafts.length === 0) {
+    results.push({ name: 'Pending drafts', status: 'PASS', detail: 'No pending drafts' })
+  } else {
+    results.push({ name: 'Pending drafts', status: 'WARN', detail: `${pendingDrafts.length} draft(s) awaiting review` })
+  }
+
+  // 15. Draft isolation — pending draft attachments must NOT appear in events
+  const eventAttachmentIds = new Set<string>()
+  for (const e of events) {
+    if (e.attachmentIds) {
+      for (const id of e.attachmentIds) eventAttachmentIds.add(id)
+    }
+  }
+  const leakedDraftIds = pendingDrafts.filter((d) =>
+    d.attachmentIds.some((id) => eventAttachmentIds.has(id))
+  )
+  if (leakedDraftIds.length === 0) {
+    results.push({ name: 'Draft isolation', status: 'PASS', detail: 'Pending drafts not in events' })
+  } else {
+    results.push({ name: 'Draft isolation', status: 'FAIL', detail: `${leakedDraftIds.length} pending draft(s) have attachments already in events` })
+  }
+
+  // 16. OCR sidecar integrity
+  const ocrDirPath = ocrDir()
+  if (existsSync(ocrDirPath)) {
+    const ocrJsonFiles = readdirSync(ocrDirPath).filter((f) => f.endsWith('.ocr.json'))
+    let missingTxt = 0
+    for (const jsonFile of ocrJsonFiles) {
+      const txtFile = jsonFile.replace('.ocr.json', '.ocr.txt')
+      if (!existsSync(path.join(ocrDirPath, txtFile))) missingTxt++
+    }
+    if (missingTxt === 0) {
+      results.push({ name: 'OCR sidecar integrity', status: 'PASS', detail: `${ocrJsonFiles.length} sidecar(s) paired correctly` })
+    } else {
+      results.push({ name: 'OCR sidecar integrity', status: 'WARN', detail: `${missingTxt}/${ocrJsonFiles.length} sidecar(s) missing .ocr.txt` })
+    }
+  } else {
+    results.push({ name: 'OCR sidecar integrity', status: 'PASS', detail: 'No OCR sidecars yet' })
+  }
+
+  // 17. OCR text isolation — extracted text must not appear in memories or context
+  if (existsSync(ocrDirPath)) {
+    const ocrJsonFiles = readdirSync(ocrDirPath).filter((f) => f.endsWith('.ocr.json'))
+    const fingerprints: string[] = []
+    for (const jsonFile of ocrJsonFiles) {
+      const ocrResult = JSON.parse(readFileSync(path.join(ocrDirPath, jsonFile), 'utf-8')) as OcrResult
+      if (ocrResult.status === 'extracted' && ocrResult.charCount >= 50) {
+        const txtFile = jsonFile.replace('.ocr.json', '.ocr.txt')
+        const txtPath = path.join(ocrDirPath, txtFile)
+        if (existsSync(txtPath)) {
+          const text = readFileSync(txtPath, 'utf-8')
+          fingerprints.push(text.slice(0, 100))
+        }
+      }
+    }
+
+    if (fingerprints.length === 0) {
+      results.push({ name: 'OCR text isolation', status: 'PASS', detail: 'No extracted text to check' })
+    } else {
+      let leaked = false
+      const memoryFile = path.join(dataDir(), 'memory/memories.json')
+      const contextMdFile = path.join(dataDir(), 'context/remi-context.md')
+      const contextJsonFile = path.join(dataDir(), 'context/remi-context.json')
+
+      const haystack: string[] = []
+      if (existsSync(memoryFile)) haystack.push(readFileSync(memoryFile, 'utf-8'))
+      if (existsSync(contextMdFile)) haystack.push(readFileSync(contextMdFile, 'utf-8'))
+      if (existsSync(contextJsonFile)) haystack.push(readFileSync(contextJsonFile, 'utf-8'))
+
+      const combined = haystack.join('\n')
+      for (const fp of fingerprints) {
+        if (combined.includes(fp)) { leaked = true; break }
+      }
+
+      if (!leaked) {
+        results.push({ name: 'OCR text isolation', status: 'PASS', detail: `${fingerprints.length} fingerprint(s) not in memory/context` })
+      } else {
+        results.push({ name: 'OCR text isolation', status: 'FAIL', detail: 'OCR extracted text found in memory or context files!' })
+      }
+    }
+  } else {
+    results.push({ name: 'OCR text isolation', status: 'PASS', detail: 'No OCR data to check' })
+  }
+
   return results
 }
 
 export function printDoctorResults(results: CheckResult[]): void {
   console.log()
-  console.log('  Remi Family Memory — Health Check (v1.0)')
+  console.log('  Remi Family Memory — Health Check (v1.1.1)')
   console.log('  ==========================================')
   console.log()
 

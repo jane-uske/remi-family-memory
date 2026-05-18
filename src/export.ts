@@ -5,6 +5,7 @@ import { listEvents } from './store.js'
 import { loadProfile } from './profile.js'
 import { loadAttachments } from './attachments.js'
 import { loadMemories } from './memory.js'
+import { loadPendingDrafts, loadConfirmedDrafts, loadRejectedDrafts, ocrDir } from './drafts.js'
 import { SCHEMA_VERSION } from './types.js'
 
 function exportsDir() { return path.join(dataDir(), 'exports') }
@@ -23,6 +24,10 @@ export function exportAll(): string {
   mkdirSync(path.join(exportDir, 'memory'), { recursive: true })
   mkdirSync(path.join(exportDir, 'context'), { recursive: true })
   mkdirSync(path.join(exportDir, 'processed'), { recursive: true })
+  mkdirSync(path.join(exportDir, 'drafts/pending'), { recursive: true })
+  mkdirSync(path.join(exportDir, 'drafts/confirmed'), { recursive: true })
+  mkdirSync(path.join(exportDir, 'drafts/rejected'), { recursive: true })
+  mkdirSync(path.join(exportDir, 'drafts/ocr'), { recursive: true })
 
   const profile = loadProfile()
   if (profile) {
@@ -60,6 +65,29 @@ export function exportAll(): string {
     }
   }
 
+  // Drafts (all states: pending + confirmed + rejected)
+  const pendingDrafts = loadPendingDrafts()
+  for (const d of pendingDrafts) {
+    writeFileSync(path.join(exportDir, 'drafts/pending', `${d.draftId}.json`), JSON.stringify(d, null, 2), 'utf-8')
+  }
+  const confirmedDrafts = loadConfirmedDrafts()
+  for (const d of confirmedDrafts) {
+    writeFileSync(path.join(exportDir, 'drafts/confirmed', `${d.draftId}.json`), JSON.stringify(d, null, 2), 'utf-8')
+  }
+  const rejectedDrafts = loadRejectedDrafts()
+  for (const d of rejectedDrafts) {
+    writeFileSync(path.join(exportDir, 'drafts/rejected', `${d.draftId}.json`), JSON.stringify(d, null, 2), 'utf-8')
+  }
+
+  // OCR sidecars
+  const ocrDirPath = ocrDir()
+  if (existsSync(ocrDirPath)) {
+    const ocrFiles = readdirSync(ocrDirPath)
+    for (const file of ocrFiles) {
+      copyFileSync(path.join(ocrDirPath, file), path.join(exportDir, 'drafts/ocr', file))
+    }
+  }
+
   for (const a of attachments) {
     const absPath = path.resolve(a.storedPath)
     if (existsSync(absPath)) {
@@ -67,13 +95,13 @@ export function exportAll(): string {
     }
   }
 
-  const readme = generateExportReadme(events.length, attachments.length, memories.length, profile?.nickname)
+  const readme = generateExportReadme(events.length, attachments.length, memories.length, pendingDrafts.length, confirmedDrafts.length, rejectedDrafts.length, profile?.nickname)
   writeFileSync(path.join(exportDir, 'README_export.md'), readme, 'utf-8')
 
   return exportDir
 }
 
-function generateExportReadme(eventCount: number, attachmentCount: number, memoryCount: number, nickname?: string): string {
+function generateExportReadme(eventCount: number, attachmentCount: number, memoryCount: number, pendingDraftCount: number, confirmedDraftCount: number, rejectedDraftCount: number, nickname?: string): string {
   return `# Family Memory Export
 
 ## What Is This
@@ -99,7 +127,20 @@ This is NOT a backup of the application — it is a **portable archive** of your
 | \`context/\` | Remi context pack (markdown + JSON) |
 | \`reports/\` | Monthly report Markdown files |
 | \`processed/\` | Original note source files (after scan) |
+| \`drafts/pending/\` | ${pendingDraftCount} pending draft records (awaiting user confirmation) |
+| \`drafts/confirmed/\` | ${confirmedDraftCount} confirmed draft records (audit trail) |
+| \`drafts/rejected/\` | ${rejectedDraftCount} rejected draft records (audit trail) |
+| \`drafts/ocr/\` | OCR sidecar files — raw extracted text, not verified facts |
 | \`assets/\` | Archived media files |
+
+## Pending Drafts
+
+Pending drafts (\`drafts/pending/\`) are **work-in-progress** records that have NOT been confirmed by a parent. They represent assets that were imported but not yet reviewed.
+
+**Important:**
+- Pending drafts will **NOT** automatically enter events, memory, or context after restore.
+- They remain in pending state until a user explicitly confirms them (via Remi or the API).
+- After confirmation, run \`npm run sync\` to process the generated note into the formal timeline.
 
 ## Data Layers
 
@@ -118,7 +159,8 @@ This is NOT a backup of the application — it is a **portable archive** of your
 6. Place \`context/\` contents → \`data/context/\`
 7. Copy \`reports/\` → \`data/reports/\`
 8. Copy \`processed/\` → \`data/processed/notes/\`
-9. Copy \`assets/\` → \`data/archive/assets/\`
+9. Copy \`drafts/\` → \`data/drafts/\` (preserving pending/confirmed/rejected subdirs)
+10. Copy \`assets/\` → \`data/archive/assets/\`
 
 ## How to Re-sync After Restore
 
