@@ -1,5 +1,7 @@
 # Remi Family Memory
 
+**v1.0 Self-use MVP** — stable for daily family use.
+
 > A local-first family memory system — capture, archive, and grounded AI retrieval for your family's story.
 
 ## What This Is
