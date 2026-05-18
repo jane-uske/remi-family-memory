@@ -10,6 +10,7 @@ import { generateContext } from './context.js'
 import { aiSearch } from './search.js'
 import { runDoctor } from './doctor.js'
 import { SCHEMA_VERSION } from './types.js'
+import { RemiMemoryAdapter } from './remi-adapter.js'
 import type { Request, Response, NextFunction } from 'express'
 
 function getToken(): string | null {
@@ -195,6 +196,34 @@ export function startServer(port = 3456) {
     }
   })
 
+  app.use(express.json())
+
+  const askAdapter = new RemiMemoryAdapter({
+    enabled: true,
+    serviceUrl: `http://localhost:${port}`,
+    token: null,
+  })
+
+  app.post('/api/ai/ask', async (req, res) => {
+    const { question } = req.body || {}
+    if (!question || typeof question !== 'string') {
+      res.status(400).json({ error: 'Missing required field: question (string)' })
+      return
+    }
+
+    try {
+      if (!askAdapter.isEnabled()) {
+        res.status(503).json({ error: 'Adapter not enabled' })
+        return
+      }
+      await askAdapter.ensureConnected()
+      const result = await askAdapter.handleQuestion(question)
+      res.json(result)
+    } catch (e) {
+      res.status(500).json({ error: `Ask failed: ${e instanceof Error ? e.message : String(e)}` })
+    }
+  })
+
   const server = app.listen(port, () => {
     const tokenSet = !!getToken()
     console.log(`Remi Family Memory Service: http://localhost:${port}`)
@@ -208,6 +237,7 @@ export function startServer(port = 3456) {
     console.log(`    Context:     GET  /api/ai/context`)
     console.log(`    Memories:    GET  /api/ai/memories`)
     console.log(`    Search:      GET  /api/ai/search?q=keyword`)
+    console.log(`    Ask:         POST /api/ai/ask`)
     console.log(`    Rebuild:     POST /api/ai/rebuild`)
     console.log()
     console.log('  Owner API (no auth, web dashboard):')
