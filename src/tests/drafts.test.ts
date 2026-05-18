@@ -1,4 +1,4 @@
-import { describe, it, before, beforeEach } from 'node:test'
+import { describe, it, before, beforeEach, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { writeFileSync, mkdirSync, existsSync, readFileSync, readdirSync } from 'node:fs'
 import { mkdtempSync } from 'node:fs'
@@ -241,6 +241,21 @@ describe('groupAttachments', () => {
     assert.equal(groups.get('date:2026-05-10')?.length, 2)
     assert.equal(groups.get('imported:2026-05-12')?.length, 1)
   })
+
+  it('groups by subdirectory when originalRelativePath has a dir prefix', () => {
+    const attachments: Attachment[] = [
+      { attachmentId: 'b1', type: 'image', originalFilename: 'IMG_001.png', originalRelativePath: '13w-checkup/IMG_001.png', storedPath: '', mimeType: 'image/png', size: 100, sha256: 'aaa', createdAt: '2026-05-10T00:00:00Z', importedAt: '2026-05-12T00:00:00Z', schemaVersion: '1.1.1.1' },
+      { attachmentId: 'b2', type: 'image', originalFilename: 'IMG_002.png', originalRelativePath: '13w-checkup/IMG_002.png', storedPath: '', mimeType: 'image/png', size: 200, sha256: 'bbb', createdAt: '2026-05-10T00:00:00Z', importedAt: '2026-05-12T00:00:00Z', schemaVersion: '1.1.1.1' },
+      { attachmentId: 'b3', type: 'pdf', originalFilename: 'report.pdf', originalRelativePath: '16w-checkup/report.pdf', storedPath: '', mimeType: 'application/pdf', size: 300, sha256: 'ccc', createdAt: '2026-05-11T00:00:00Z', importedAt: '2026-05-12T00:00:00Z', schemaVersion: '1.1.1.1' },
+      { attachmentId: 'b4', type: 'image', originalFilename: 'loose-photo.jpg', originalRelativePath: 'loose-photo.jpg', storedPath: '', mimeType: 'image/jpeg', size: 400, sha256: 'ddd', createdAt: '2026-05-11T00:00:00Z', importedAt: '2026-05-12T00:00:00Z', schemaVersion: '1.1.1.1' },
+    ]
+
+    const groups = groupAttachments(attachments)
+    assert.equal(groups.size, 3)
+    assert.equal(groups.get('subdir:13w-checkup')?.length, 2)
+    assert.equal(groups.get('subdir:16w-checkup')?.length, 1)
+    assert.equal(groups.get('imported:2026-05-12')?.length, 1)
+  })
 })
 
 describe('v1.1.0.1: export includes pending drafts', () => {
@@ -350,5 +365,107 @@ describe('v1.1.0.1: multi-draft confirm safety', () => {
     const confirmed = loadConfirmedDrafts()
     assert.ok(confirmed.some((d) => d.draftId === draftIds[0]))
     assert.ok(confirmed.some((d) => d.draftId === draftIds[1]))
+  })
+})
+
+describe('v1.1.1.1: recursive subdirectory scanning', () => {
+  const SUBDIR_TEST_DIR = mkdtempSync(path.join(tmpdir(), 'remi-subdir-test-'))
+  let originalDataDir: string
+
+  before(() => {
+    originalDataDir = process.env.REMI_DATA_DIR!
+    process.env.REMI_DATA_DIR = SUBDIR_TEST_DIR
+
+    mkdirSync(path.join(SUBDIR_TEST_DIR, 'inbox/assets/13w-checkup'), { recursive: true })
+    mkdirSync(path.join(SUBDIR_TEST_DIR, 'inbox/assets/16w-checkup'), { recursive: true })
+    mkdirSync(path.join(SUBDIR_TEST_DIR, 'inbox/notes'), { recursive: true })
+    mkdirSync(path.join(SUBDIR_TEST_DIR, 'events'), { recursive: true })
+    mkdirSync(path.join(SUBDIR_TEST_DIR, 'profile'), { recursive: true })
+
+    writeFileSync(path.join(SUBDIR_TEST_DIR, 'profile/baby.json'), JSON.stringify({
+      babyId: 'baby-test-002',
+      nickname: '小豆',
+      expectedBirthDate: '2026-11-15',
+      parents: [{ role: 'father', name: '吴健' }],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-05-18T00:00:00.000Z',
+    }, null, 2), 'utf-8')
+
+    writeFileSync(path.join(SUBDIR_TEST_DIR, 'inbox/assets/13w-checkup/IMG_6663.png'), 'fake-img-13w-1')
+    writeFileSync(path.join(SUBDIR_TEST_DIR, 'inbox/assets/13w-checkup/IMG_6664.png'), 'fake-img-13w-2')
+    writeFileSync(path.join(SUBDIR_TEST_DIR, 'inbox/assets/13w-checkup/.DS_Store'), 'hidden-mac-file')
+    writeFileSync(path.join(SUBDIR_TEST_DIR, 'inbox/assets/16w-checkup/report.pdf'), 'fake-pdf-16w')
+    writeFileSync(path.join(SUBDIR_TEST_DIR, 'inbox/assets/loose-photo.jpg'), 'fake-loose-photo')
+  })
+
+  it('scan-assets recursively finds files in subdirectories', () => {
+    const result = scanAssets()
+    assert.equal(result.added, 4)
+    assert.equal(result.skipped, 0)
+
+    const attachments = loadAttachments()
+    assert.equal(attachments.length, 4)
+
+    const relPaths = attachments.map((a) => a.originalRelativePath).sort()
+    assert.ok(relPaths.includes('13w-checkup/IMG_6663.png'))
+    assert.ok(relPaths.includes('13w-checkup/IMG_6664.png'))
+    assert.ok(relPaths.includes('16w-checkup/report.pdf'))
+    assert.ok(relPaths.includes('loose-photo.jpg'))
+  })
+
+  it('.DS_Store and hidden files are ignored', () => {
+    const attachments = loadAttachments()
+    const filenames = attachments.map((a) => a.originalFilename)
+    assert.ok(!filenames.includes('.DS_Store'))
+  })
+
+  it('intake-assets groups subdirectory files into single drafts', async () => {
+    const result = await intakeAssets()
+    assert.equal(result.draftsCreated, 3)
+
+    const pending = loadPendingDrafts()
+    assert.equal(pending.length, 3)
+
+    const checkup13w = pending.find((d) => d.inferredTitle === '13w-checkup 资料')
+    assert.ok(checkup13w, 'Should find draft for 13w-checkup')
+    assert.equal(checkup13w.attachmentIds.length, 2)
+    assert.ok(checkup13w.originalRelativePaths?.includes('13w-checkup/IMG_6663.png'))
+    assert.ok(checkup13w.originalRelativePaths?.includes('13w-checkup/IMG_6664.png'))
+
+    const checkup16w = pending.find((d) => d.inferredTitle === '16w-checkup 资料')
+    assert.ok(checkup16w, 'Should find draft for 16w-checkup')
+    assert.equal(checkup16w.attachmentIds.length, 1)
+
+    const looseDraft = pending.find((d) => d.originalFilenames.includes('loose-photo.jpg'))
+    assert.ok(looseDraft, 'Should find draft for loose root file')
+    assert.equal(looseDraft.inferredTitle, null)
+  })
+
+  it('different subdirectories produce different drafts', async () => {
+    const pending = loadPendingDrafts()
+    const checkup13w = pending.find((d) => d.inferredTitle === '13w-checkup 资料')
+    const checkup16w = pending.find((d) => d.inferredTitle === '16w-checkup 资料')
+    assert.ok(checkup13w)
+    assert.ok(checkup16w)
+    assert.notEqual(checkup13w.draftId, checkup16w.draftId)
+  })
+
+  it('draft records originalRelativePaths', () => {
+    const pending = loadPendingDrafts()
+    for (const d of pending) {
+      assert.ok(d.originalRelativePaths, 'Draft should have originalRelativePaths')
+      assert.equal(d.originalRelativePaths!.length, d.attachmentIds.length)
+    }
+  })
+
+  it('subdirectory draft has inferredTitle from dir name', () => {
+    const pending = loadPendingDrafts()
+    const checkup13w = pending.find((d) => d.inferredTitle === '13w-checkup 资料')
+    assert.ok(checkup13w)
+    assert.ok(!checkup13w.uncertainFields.includes('title'), 'Title inferred from subdir should not be uncertain')
+  })
+
+  after(() => {
+    process.env.REMI_DATA_DIR = originalDataDir
   })
 })

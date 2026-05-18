@@ -1,3 +1,4 @@
+import path from 'node:path'
 import { nanoid } from 'nanoid'
 import { loadAttachments } from './attachments.js'
 import { loadAllDrafts, saveDraft, saveOcrSidecar } from './drafts.js'
@@ -27,14 +28,29 @@ export function inferDateFromFilename(filename: string): string | null {
   return null
 }
 
+function getSubdirectory(attachment: Attachment): string | null {
+  const relPath = attachment.originalRelativePath
+  if (!relPath) return null
+  const dir = path.dirname(relPath)
+  if (dir === '.') return null
+  return dir
+}
+
 export function groupAttachments(attachments: Attachment[]): Map<string, Attachment[]> {
   const groups = new Map<string, Attachment[]>()
 
   for (const a of attachments) {
-    const dateFromName = inferDateFromFilename(a.originalFilename)
-    const key = dateFromName
-      ? `date:${dateFromName}`
-      : `imported:${a.importedAt.slice(0, 10)}`
+    const subdir = getSubdirectory(a)
+    let key: string
+
+    if (subdir) {
+      key = `subdir:${subdir}`
+    } else {
+      const dateFromName = inferDateFromFilename(a.originalFilename)
+      key = dateFromName
+        ? `date:${dateFromName}`
+        : `imported:${a.importedAt.slice(0, 10)}`
+    }
 
     const group = groups.get(key) || []
     group.push(a)
@@ -42,6 +58,11 @@ export function groupAttachments(attachments: Attachment[]): Map<string, Attachm
   }
 
   return groups
+}
+
+function inferTitleFromSubdir(subdir: string): string {
+  const dirName = path.basename(subdir)
+  return `${dirName} 资料`
 }
 
 export async function intakeAssets(): Promise<{ draftsCreated: number; skipped: number }> {
@@ -80,9 +101,19 @@ export async function intakeAssets(): Promise<{ draftsCreated: number; skipped: 
   let draftsCreated = 0
 
   for (const [key, groupAtts] of groups) {
-    const inferredDate = key.startsWith('date:')
-      ? key.slice(5)
-      : groupAtts[0]?.importedAt.slice(0, 10) || null
+    let inferredDate: string | null = null
+    let inferredTitle: string | null = null
+
+    if (key.startsWith('subdir:')) {
+      const subdir = key.slice(7)
+      inferredTitle = inferTitleFromSubdir(subdir)
+      const dates = groupAtts.map((a) => inferDateFromFilename(a.originalFilename)).filter(Boolean)
+      inferredDate = dates[0] || groupAtts[0]?.importedAt.slice(0, 10) || null
+    } else if (key.startsWith('date:')) {
+      inferredDate = key.slice(5)
+    } else {
+      inferredDate = groupAtts[0]?.importedAt.slice(0, 10) || null
+    }
 
     const ocrResults = await extractOcrForDraft(groupAtts)
     for (const r of ocrResults) {
@@ -104,14 +135,15 @@ export async function intakeAssets(): Promise<{ draftsCreated: number; skipped: 
       batchId,
       status: 'pending',
       inferredDate,
-      inferredTitle: null,
+      inferredTitle,
       inferredType: null,
       attachmentIds: groupAtts.map((a) => a.attachmentId),
       originalFilenames: groupAtts.map((a) => a.originalFilename),
+      originalRelativePaths: groupAtts.map((a) => a.originalRelativePath || a.originalFilename),
       source: 'asset_intake',
       reviewStatus: 'draft',
       captureStatus: 'pending_parent_review',
-      uncertainFields: ['title', 'type'],
+      uncertainFields: inferredTitle ? ['type'] : ['title', 'type'],
       ocrStatus,
       ocrAttachmentCount: ocrResults.length,
       ocrExtractedCount: extractedCount,
@@ -121,7 +153,7 @@ export async function intakeAssets(): Promise<{ draftsCreated: number; skipped: 
     saveDraft(draft)
     draftsCreated++
 
-    const fileList = groupAtts.map((a) => a.originalFilename).join(', ')
+    const fileList = groupAtts.map((a) => a.originalRelativePath || a.originalFilename).join(', ')
     console.log(`  + [${inferredDate || 'no-date'}] ${fileList}`)
     console.log(`    OCR: ${extractedCount}/${ocrResults.length} extracted (${ocrStatus})`)
   }

@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = '1.1.1'
+export const SCHEMA_VERSION = '1.1.1.1'
 
 // --- Event Types ---
 
@@ -42,6 +42,7 @@ export type Attachment = {
   eventId?: string
   type: AttachmentType
   originalFilename: string
+  originalRelativePath?: string
   storedPath: string
   mimeType: string
   size: number
@@ -183,6 +184,16 @@ export type OcrResult = {
   schemaVersion: string
 }
 
+// --- VLM Extraction ---
+
+export type VlmExtractionMetadata = {
+  model: string
+  extractedAt: string
+  attachmentId: string
+  validationWarnings: string[]
+  rawResponseLength: number
+}
+
 // --- Draft Note (Asset Intake) ---
 
 export type DraftNote = {
@@ -194,6 +205,7 @@ export type DraftNote = {
   inferredType: BabyEventType | null
   attachmentIds: string[]
   originalFilenames: string[]
+  originalRelativePaths?: string[]
   source: 'asset_intake'
   reviewStatus: 'draft'
   captureStatus: 'pending_parent_review'
@@ -201,6 +213,8 @@ export type DraftNote = {
   ocrStatus?: OcrStatus | 'partial'
   ocrAttachmentCount?: number
   ocrExtractedCount?: number
+  extractedFacts?: string[]
+  extractionMetadata?: VlmExtractionMetadata
   createdAt: string
   confirmedAt?: string
 }

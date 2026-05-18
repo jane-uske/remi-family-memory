@@ -30,6 +30,8 @@ const MIME_MAP: Record<string, { mime: string; type: AttachmentType }> = {
   '.docx': { mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', type: 'document' },
 }
 
+const IGNORED_FILES = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini'])
+
 function ensureDirs() {
   for (const dir of [assetsInbox(), assetsArchive(), originalsArchive(), path.dirname(attachmentsFile())]) {
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
@@ -68,40 +70,59 @@ function getFileInfo(ext: string): { mime: string; type: AttachmentType } {
   return MIME_MAP[ext.toLowerCase()] || { mime: 'application/octet-stream', type: 'other' }
 }
 
+function collectFiles(dir: string, baseDir: string): { absolutePath: string; relativePath: string }[] {
+  const results: { absolutePath: string; relativePath: string }[] = []
+  if (!existsSync(dir)) return results
+
+  const entries = readdirSync(dir)
+  for (const entry of entries) {
+    if (entry.startsWith('.') || IGNORED_FILES.has(entry)) continue
+    const fullPath = path.join(dir, entry)
+    const stat = statSync(fullPath)
+    if (stat.isDirectory()) {
+      results.push(...collectFiles(fullPath, baseDir))
+    } else if (stat.isFile()) {
+      const relativePath = path.relative(baseDir, fullPath)
+      results.push({ absolutePath: fullPath, relativePath })
+    }
+  }
+  return results
+}
+
 export function scanAssets(): { added: number; skipped: number } {
   ensureDirs()
 
-  if (!existsSync(assetsInbox())) return { added: 0, skipped: 0 }
+  const inbox = assetsInbox()
+  if (!existsSync(inbox)) return { added: 0, skipped: 0 }
 
-  const files = readdirSync(assetsInbox()).filter((f) => !f.startsWith('.'))
+  const files = collectFiles(inbox, inbox)
   let added = 0
   let skipped = 0
 
-  for (const file of files) {
-    const filePath = path.join(assetsInbox(), file)
-    const stat = statSync(filePath)
-    if (!stat.isFile()) continue
-
-    const sha256 = computeSha256(filePath)
+  for (const { absolutePath, relativePath } of files) {
+    const stat = statSync(absolutePath)
+    const sha256 = computeSha256(absolutePath)
 
     if (hasSha256(sha256)) {
       skipped++
       continue
     }
 
-    const ext = path.extname(file)
+    const ext = path.extname(relativePath)
+    const filename = path.basename(relativePath)
     const { mime, type } = getFileInfo(ext)
     const id = nanoid()
     const storedFilename = `${id}${ext}`
     const storedPath = path.join(assetsArchive(), storedFilename)
 
-    renameSync(filePath, storedPath)
+    renameSync(absolutePath, storedPath)
 
     const now = new Date().toISOString()
     const attachment: Attachment = {
       attachmentId: id,
       type,
-      originalFilename: file,
+      originalFilename: filename,
+      originalRelativePath: relativePath,
       storedPath: path.relative(path.resolve('.'), storedPath),
       mimeType: mime,
       size: stat.size,
@@ -113,7 +134,7 @@ export function scanAssets(): { added: number; skipped: number } {
 
     addAttachment(attachment)
     added++
-    console.log(`  + [${type}] ${file} (${formatSize(stat.size)})`)
+    console.log(`  + [${type}] ${relativePath} (${formatSize(stat.size)})`)
   }
 
   return { added, skipped }
