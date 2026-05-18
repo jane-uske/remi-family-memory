@@ -1,30 +1,33 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
+import { dataDir } from './paths.js'
 import type { BabyEvent } from './types.js'
 
-const DATA_DIR = path.resolve('data')
-const EVENTS_FILE = path.join(DATA_DIR, 'events', 'events.json')
+function eventsFile() {
+  return path.join(dataDir(), 'events', 'events.json')
+}
 
 function ensureFile() {
-  const dir = path.dirname(EVENTS_FILE)
+  const file = eventsFile()
+  const dir = path.dirname(file)
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true })
   }
-  if (!existsSync(EVENTS_FILE)) {
-    writeFileSync(EVENTS_FILE, '[]', 'utf-8')
+  if (!existsSync(file)) {
+    writeFileSync(file, '[]', 'utf-8')
   }
 }
 
 export function loadEvents(): BabyEvent[] {
   ensureFile()
-  const raw = readFileSync(EVENTS_FILE, 'utf-8')
+  const raw = readFileSync(eventsFile(), 'utf-8')
   return JSON.parse(raw) as BabyEvent[]
 }
 
 export function saveEvent(event: BabyEvent): void {
   const events = loadEvents()
   events.push(event)
-  writeFileSync(EVENTS_FILE, JSON.stringify(events, null, 2), 'utf-8')
+  writeFileSync(eventsFile(), JSON.stringify(events, null, 2), 'utf-8')
 }
 
 export function listEvents(): BabyEvent[] {

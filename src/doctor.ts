@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import path from 'node:path'
+import { dataDir } from './paths.js'
 import { listEvents } from './store.js'
 import { loadProfile } from './profile.js'
 import { loadAttachments } from './attachments.js'
@@ -78,16 +79,16 @@ export function runDoctor(): CheckResult[] {
   }
 
   // 6. Reports directory
-  const reportsDir = path.resolve('data/reports')
-  if (existsSync(reportsDir)) {
+  const repDir = path.join(dataDir(), 'reports')
+  if (existsSync(repDir)) {
     results.push({ name: 'Reports directory', status: 'PASS', detail: 'Exists' })
   } else {
     results.push({ name: 'Reports directory', status: 'WARN', detail: 'Not found. Run: npm run report' })
   }
 
   // 7. Context pack
-  const contextMd = path.resolve('data/context/remi-context.md')
-  const contextJson = path.resolve('data/context/remi-context.json')
+  const contextMd = path.join(dataDir(), 'context/remi-context.md')
+  const contextJson = path.join(dataDir(), 'context/remi-context.json')
   if (existsSync(contextMd) && existsSync(contextJson)) {
     results.push({ name: 'Context pack', status: 'PASS', detail: 'remi-context.md + .json present' })
   } else {

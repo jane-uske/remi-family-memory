@@ -1,19 +1,20 @@
 import { existsSync, mkdirSync, copyFileSync, writeFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
+import { dataDir } from './paths.js'
 import { listEvents } from './store.js'
 import { loadProfile } from './profile.js'
 import { loadAttachments } from './attachments.js'
 import { loadMemories } from './memory.js'
 import { SCHEMA_VERSION } from './types.js'
 
-const EXPORTS_DIR = path.resolve('data/exports')
-const REPORTS_DIR = path.resolve('data/reports')
-const CONTEXT_DIR = path.resolve('data/context')
+function exportsDir() { return path.join(dataDir(), 'exports') }
+function reportsDir() { return path.join(dataDir(), 'reports') }
+function contextDir() { return path.join(dataDir(), 'context') }
 
 export function exportAll(): string {
   const now = new Date()
   const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-  const exportDir = path.join(EXPORTS_DIR, `family-memory-export-${dateStr}`)
+  const exportDir = path.join(exportsDir(), `family-memory-export-${dateStr}`)
 
   mkdirSync(exportDir, { recursive: true })
   mkdirSync(path.join(exportDir, 'reports'), { recursive: true })
@@ -35,17 +36,17 @@ export function exportAll(): string {
   const memories = loadMemories()
   writeFileSync(path.join(exportDir, 'memory', 'memories.json'), JSON.stringify(memories, null, 2), 'utf-8')
 
-  if (existsSync(REPORTS_DIR)) {
-    const reports = readdirSync(REPORTS_DIR).filter((f) => f.endsWith('.md'))
+  if (existsSync(reportsDir())) {
+    const reports = readdirSync(reportsDir()).filter((f) => f.endsWith('.md'))
     for (const file of reports) {
-      copyFileSync(path.join(REPORTS_DIR, file), path.join(exportDir, 'reports', file))
+      copyFileSync(path.join(reportsDir(), file), path.join(exportDir, 'reports', file))
     }
   }
 
-  if (existsSync(CONTEXT_DIR)) {
-    const contextFiles = readdirSync(CONTEXT_DIR)
+  if (existsSync(contextDir())) {
+    const contextFiles = readdirSync(contextDir())
     for (const file of contextFiles) {
-      copyFileSync(path.join(CONTEXT_DIR, file), path.join(exportDir, 'context', file))
+      copyFileSync(path.join(contextDir(), file), path.join(exportDir, 'context', file))
     }
   }
 

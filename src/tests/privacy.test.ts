@@ -1,19 +1,27 @@
 import { describe, it, before, after } from 'node:test'
 import assert from 'node:assert/strict'
-import { writeFileSync, mkdirSync, existsSync, rmSync, readFileSync } from 'node:fs'
+import { writeFileSync, mkdirSync, rmSync, readFileSync } from 'node:fs'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 import type { BabyEvent, BabyProfile } from '../types.js'
 import { SCHEMA_VERSION } from '../types.js'
 
-// --- Test Fixtures ---
+// --- Test Isolation: all data writes go to a temp directory ---
 
-const TEST_DATA_DIR = path.resolve('data')
-const EVENTS_FILE = path.join(TEST_DATA_DIR, 'events', 'events.json')
-const PROFILE_FILE = path.join(TEST_DATA_DIR, 'profile', 'baby.json')
-const MEMORY_FILE = path.join(TEST_DATA_DIR, 'memory', 'memories.json')
-const CONTEXT_JSON = path.join(TEST_DATA_DIR, 'context', 'remi-context.json')
+const TEST_DATA_DIR = mkdtempSync(path.join(tmpdir(), 'remi-test-'))
+process.env.REMI_DATA_DIR = TEST_DATA_DIR
+
+const EVENTS_DIR = path.join(TEST_DATA_DIR, 'events')
+const EVENTS_FILE = path.join(EVENTS_DIR, 'events.json')
+const PROFILE_DIR = path.join(TEST_DATA_DIR, 'profile')
+const PROFILE_FILE = path.join(PROFILE_DIR, 'baby.json')
+const MEMORY_DIR = path.join(TEST_DATA_DIR, 'memory')
+const CONTEXT_DIR = path.join(TEST_DATA_DIR, 'context')
 const REPORTS_DIR = path.join(TEST_DATA_DIR, 'reports')
+
+// --- Test Fixtures ---
 
 const BLOCKED_EVENT: BabyEvent = {
   id: 'blocked-test-001',
@@ -63,42 +71,26 @@ const TEST_PROFILE: BabyProfile = {
   updatedAt: '2026-05-18T00:00:00.000Z',
 }
 
-let originalEvents: string | null = null
-let originalMemories: string | null = null
-
-function backupAndSetFixtures() {
-  if (existsSync(EVENTS_FILE)) {
-    originalEvents = readFileSync(EVENTS_FILE, 'utf-8')
-  }
-  if (existsSync(MEMORY_FILE)) {
-    originalMemories = readFileSync(MEMORY_FILE, 'utf-8')
-  }
-
-  mkdirSync(path.dirname(EVENTS_FILE), { recursive: true })
-  mkdirSync(path.dirname(PROFILE_FILE), { recursive: true })
-  mkdirSync(path.dirname(MEMORY_FILE), { recursive: true })
-  mkdirSync(path.join(TEST_DATA_DIR, 'context'), { recursive: true })
+function setupFixtures() {
+  mkdirSync(EVENTS_DIR, { recursive: true })
+  mkdirSync(PROFILE_DIR, { recursive: true })
+  mkdirSync(MEMORY_DIR, { recursive: true })
+  mkdirSync(CONTEXT_DIR, { recursive: true })
   mkdirSync(REPORTS_DIR, { recursive: true })
 
-  const fixtures = [BLOCKED_EVENT, NORMAL_EVENT]
-  writeFileSync(EVENTS_FILE, JSON.stringify(fixtures, null, 2), 'utf-8')
+  writeFileSync(EVENTS_FILE, JSON.stringify([BLOCKED_EVENT, NORMAL_EVENT], null, 2), 'utf-8')
   writeFileSync(PROFILE_FILE, JSON.stringify(TEST_PROFILE, null, 2), 'utf-8')
 }
 
-function restoreOriginal() {
-  if (originalEvents !== null) {
-    writeFileSync(EVENTS_FILE, originalEvents, 'utf-8')
-  }
-  if (originalMemories !== null) {
-    writeFileSync(MEMORY_FILE, originalMemories, 'utf-8')
-  }
+function cleanupTempDir() {
+  rmSync(TEST_DATA_DIR, { recursive: true, force: true })
 }
 
 // --- Privacy Boundary Tests ---
 
 describe('Privacy: blocked_from_ai filtering', () => {
-  before(() => backupAndSetFixtures())
-  after(() => restoreOriginal())
+  before(() => setupFixtures())
+  after(() => cleanupTempDir())
 
   it('buildMemories() excludes blocked events', async () => {
     const { buildMemories, loadMemories } = await import('../memory.js')
@@ -116,7 +108,8 @@ describe('Privacy: blocked_from_ai filtering', () => {
     const { generateContext } = await import('../context.js')
     generateContext()
 
-    const contextRaw = readFileSync(CONTEXT_JSON, 'utf-8')
+    const contextJsonPath = path.join(CONTEXT_DIR, 'remi-context.json')
+    const contextRaw = readFileSync(contextJsonPath, 'utf-8')
     const context = JSON.parse(contextRaw)
 
     const blockedInRecent = context.recentEvents?.some(
@@ -138,7 +131,8 @@ describe('Privacy: blocked_from_ai filtering', () => {
     const { generateContext } = await import('../context.js')
     generateContext()
 
-    const contextRaw = readFileSync(CONTEXT_JSON, 'utf-8')
+    const contextJsonPath = path.join(CONTEXT_DIR, 'remi-context.json')
+    const contextRaw = readFileSync(contextJsonPath, 'utf-8')
     const context = JSON.parse(contextRaw)
 
     const blockedInNotes = context.recentParentNotes?.some(
@@ -191,8 +185,6 @@ describe('Gestational weeks: historical date accuracy', () => {
   it('getGestationalWeeks with past date returns correct weeks', async () => {
     const { getGestationalWeeks } = await import('../profile.js')
 
-    // EDD = 2026-11-15, LMP approx = EDD - 280 days = 2026-02-08
-    // At 2026-05-15: (2026-05-15 - 2026-02-08) = 96 days / 7 = ~13 weeks
     const pastDate = new Date('2026-05-15')
     const weeks = getGestationalWeeks(TEST_PROFILE, pastDate)
     assert.ok(weeks !== null, 'weeks should not be null')
@@ -257,14 +249,12 @@ describe('Protocol: Grounded Answer contract', () => {
 // --- v0.6.2: AI Boundary & Access Control Tests ---
 
 describe('v0.6.2: AI-facing search excludes reports', () => {
-  before(() => backupAndSetFixtures())
-  after(() => restoreOriginal())
+  before(() => setupFixtures())
 
   it('aiSearch() returns only events and memories, never reports', async () => {
     const { aiSearch } = await import('../search.js')
     const { buildMemories } = await import('../memory.js')
 
-    mkdirSync(REPORTS_DIR, { recursive: true })
     writeFileSync(
       path.join(REPORTS_DIR, '2026-05.md'),
       '# 月报 2026-05\n\n包含关键词：孕检\n',
@@ -290,7 +280,6 @@ describe('v0.6.2: AI-facing search excludes reports', () => {
   it('full search() still includes reports for owner', async () => {
     const { search } = await import('../search.js')
 
-    mkdirSync(REPORTS_DIR, { recursive: true })
     writeFileSync(
       path.join(REPORTS_DIR, '2026-05.md'),
       '# 月报 2026-05\n\n包含关键词：孕检\n',
@@ -309,20 +298,19 @@ describe('v0.6.2: Token auth middleware', () => {
   const TEST_TOKEN = 'test-secret-token-xyz'
 
   before(async () => {
-    backupAndSetFixtures()
+    setupFixtures()
     process.env.FAMILY_MEMORY_TOKEN = TEST_TOKEN
     const { startServer } = await import('../server.js')
     await new Promise<void>((resolve) => {
-      server = startServer(TEST_PORT) as any
+      server = startServer(TEST_PORT)
       setTimeout(resolve, 200)
     })
   })
 
   after(() => {
     delete process.env.FAMILY_MEMORY_TOKEN
-    restoreOriginal()
     if (server) {
-      (server as any).close()
+      server.close()
     }
   })
 

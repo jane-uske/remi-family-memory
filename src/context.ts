@@ -1,15 +1,17 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
+import { dataDir } from './paths.js'
 import { listEvents, listAISafeEvents } from './store.js'
 import { loadProfile, getGestationalWeeks, getStage } from './profile.js'
 import { loadAttachments } from './attachments.js'
 import { loadMemories } from './memory.js'
 import { SCHEMA_VERSION, EVENT_TYPE_LABELS } from './types.js'
 
-const CONTEXT_DIR = path.resolve('data/context')
+function contextDir() { return path.join(dataDir(), 'context') }
 
 function ensureDir() {
-  if (!existsSync(CONTEXT_DIR)) mkdirSync(CONTEXT_DIR, { recursive: true })
+  const dir = contextDir()
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
 }
 
 export function generateContext(): { mdPath: string; jsonPath: string } {
@@ -158,8 +160,8 @@ export function generateContext(): { mdPath: string; jsonPath: string } {
     })),
   }
 
-  const mdPath = path.join(CONTEXT_DIR, 'remi-context.md')
-  const jsonPath = path.join(CONTEXT_DIR, 'remi-context.json')
+  const mdPath = path.join(contextDir(), 'remi-context.md')
+  const jsonPath = path.join(contextDir(), 'remi-context.json')
 
   writeFileSync(mdPath, md, 'utf-8')
   writeFileSync(jsonPath, JSON.stringify(contextJson, null, 2), 'utf-8')

@@ -2,13 +2,14 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, rename
 import { createHash } from 'node:crypto'
 import path from 'node:path'
 import { nanoid } from 'nanoid'
+import { dataDir } from './paths.js'
 import { SCHEMA_VERSION } from './types.js'
 import type { Attachment, AttachmentType } from './types.js'
 
-const ATTACHMENTS_FILE = path.resolve('data/events/attachments.json')
-const ASSETS_INBOX = path.resolve('data/inbox/assets')
-const ASSETS_ARCHIVE = path.resolve('data/archive/assets')
-const ORIGINALS_ARCHIVE = path.resolve('data/archive/originals')
+function attachmentsFile() { return path.join(dataDir(), 'events/attachments.json') }
+function assetsInbox() { return path.join(dataDir(), 'inbox/assets') }
+function assetsArchive() { return path.join(dataDir(), 'archive/assets') }
+function originalsArchive() { return path.join(dataDir(), 'archive/originals') }
 
 const MIME_MAP: Record<string, { mime: string; type: AttachmentType }> = {
   '.jpg': { mime: 'image/jpeg', type: 'image' },
@@ -30,21 +31,22 @@ const MIME_MAP: Record<string, { mime: string; type: AttachmentType }> = {
 }
 
 function ensureDirs() {
-  for (const dir of [ASSETS_INBOX, ASSETS_ARCHIVE, ORIGINALS_ARCHIVE, path.dirname(ATTACHMENTS_FILE)]) {
+  for (const dir of [assetsInbox(), assetsArchive(), originalsArchive(), path.dirname(attachmentsFile())]) {
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
   }
 }
 
 export function loadAttachments(): Attachment[] {
   ensureDirs()
-  if (!existsSync(ATTACHMENTS_FILE)) return []
-  const raw = readFileSync(ATTACHMENTS_FILE, 'utf-8')
+  const file = attachmentsFile()
+  if (!existsSync(file)) return []
+  const raw = readFileSync(file, 'utf-8')
   return JSON.parse(raw) as Attachment[]
 }
 
 function saveAttachments(attachments: Attachment[]): void {
   ensureDirs()
-  writeFileSync(ATTACHMENTS_FILE, JSON.stringify(attachments, null, 2), 'utf-8')
+  writeFileSync(attachmentsFile(), JSON.stringify(attachments, null, 2), 'utf-8')
 }
 
 export function addAttachment(attachment: Attachment): void {
@@ -69,14 +71,14 @@ function getFileInfo(ext: string): { mime: string; type: AttachmentType } {
 export function scanAssets(): { added: number; skipped: number } {
   ensureDirs()
 
-  if (!existsSync(ASSETS_INBOX)) return { added: 0, skipped: 0 }
+  if (!existsSync(assetsInbox())) return { added: 0, skipped: 0 }
 
-  const files = readdirSync(ASSETS_INBOX).filter((f) => !f.startsWith('.'))
+  const files = readdirSync(assetsInbox()).filter((f) => !f.startsWith('.'))
   let added = 0
   let skipped = 0
 
   for (const file of files) {
-    const filePath = path.join(ASSETS_INBOX, file)
+    const filePath = path.join(assetsInbox(), file)
     const stat = statSync(filePath)
     if (!stat.isFile()) continue
 
@@ -91,7 +93,7 @@ export function scanAssets(): { added: number; skipped: number } {
     const { mime, type } = getFileInfo(ext)
     const id = nanoid()
     const storedFilename = `${id}${ext}`
-    const storedPath = path.join(ASSETS_ARCHIVE, storedFilename)
+    const storedPath = path.join(assetsArchive(), storedFilename)
 
     renameSync(filePath, storedPath)
 

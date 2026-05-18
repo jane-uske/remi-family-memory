@@ -1,14 +1,15 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { nanoid } from 'nanoid'
+import { dataDir } from './paths.js'
 import { listEvents } from './store.js'
 import { loadProfile, getGestationalWeeks, getStage } from './profile.js'
 import { loadAttachments } from './attachments.js'
 import { SCHEMA_VERSION } from './types.js'
 import type { BabyEvent, BabyEventType, MemoryImportance, MemoryRecord } from './types.js'
 
-const MEMORY_DIR = path.resolve('data/memory')
-const MEMORIES_FILE = path.join(MEMORY_DIR, 'memories.json')
+function memoryDir() { return path.join(dataDir(), 'memory') }
+function memoriesFile() { return path.join(memoryDir(), 'memories.json') }
 
 const IMPORTANCE_MAP: Record<BabyEventType, MemoryImportance> = {
   fetal_movement: 'core',
@@ -27,19 +28,21 @@ const IMPORTANCE_MAP: Record<BabyEventType, MemoryImportance> = {
 }
 
 function ensureDir() {
-  if (!existsSync(MEMORY_DIR)) mkdirSync(MEMORY_DIR, { recursive: true })
+  const dir = memoryDir()
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
 }
 
 export function loadMemories(): MemoryRecord[] {
   ensureDir()
-  if (!existsSync(MEMORIES_FILE)) return []
-  const raw = readFileSync(MEMORIES_FILE, 'utf-8')
+  const file = memoriesFile()
+  if (!existsSync(file)) return []
+  const raw = readFileSync(file, 'utf-8')
   return JSON.parse(raw) as MemoryRecord[]
 }
 
 function saveMemories(memories: MemoryRecord[]): void {
   ensureDir()
-  writeFileSync(MEMORIES_FILE, JSON.stringify(memories, null, 2), 'utf-8')
+  writeFileSync(memoriesFile(), JSON.stringify(memories, null, 2), 'utf-8')
 }
 
 function buildFacts(event: BabyEvent): string[] {

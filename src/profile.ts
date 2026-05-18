@@ -1,26 +1,29 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
+import { dataDir } from './paths.js'
 import type { BabyProfile } from './types.js'
 
-const PROFILE_DIR = path.resolve('data/profile')
-const PROFILE_FILE = path.join(PROFILE_DIR, 'baby.json')
+function profileDir() { return path.join(dataDir(), 'profile') }
+function profileFile() { return path.join(profileDir(), 'baby.json') }
 
 function ensureDir() {
-  if (!existsSync(PROFILE_DIR)) {
-    mkdirSync(PROFILE_DIR, { recursive: true })
+  const dir = profileDir()
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true })
   }
 }
 
 export function loadProfile(): BabyProfile | null {
   ensureDir()
-  if (!existsSync(PROFILE_FILE)) return null
-  const raw = readFileSync(PROFILE_FILE, 'utf-8')
+  const file = profileFile()
+  if (!existsSync(file)) return null
+  const raw = readFileSync(file, 'utf-8')
   return JSON.parse(raw) as BabyProfile
 }
 
 export function saveProfile(profile: BabyProfile): void {
   ensureDir()
-  writeFileSync(PROFILE_FILE, JSON.stringify(profile, null, 2), 'utf-8')
+  writeFileSync(profileFile(), JSON.stringify(profile, null, 2), 'utf-8')
 }
 
 export function getGestationalWeeks(profile: BabyProfile, referenceDate?: Date): number | null {

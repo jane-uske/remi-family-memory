@@ -1,12 +1,13 @@
 import { readdirSync, readFileSync, existsSync } from 'node:fs'
 import path from 'node:path'
+import { dataDir } from './paths.js'
 import { listAISafeEvents } from './store.js'
 import { loadAttachments } from './attachments.js'
 import { loadMemories } from './memory.js'
 import { EVENT_TYPE_LABELS } from './types.js'
 import type { SearchResult } from './types.js'
 
-const REPORTS_DIR = path.resolve('data/reports')
+function reportsDir() { return path.join(dataDir(), 'reports') }
 
 export function search(keyword: string): SearchResult[] {
   const results: SearchResult[] = []
@@ -44,10 +45,10 @@ export function search(keyword: string): SearchResult[] {
     }
   }
 
-  if (existsSync(REPORTS_DIR)) {
-    const reports = readdirSync(REPORTS_DIR).filter((f) => f.endsWith('.md'))
+  if (existsSync(reportsDir())) {
+    const reports = readdirSync(reportsDir()).filter((f) => f.endsWith('.md'))
     for (const file of reports) {
-      const filePath = path.join(REPORTS_DIR, file)
+      const filePath = path.join(reportsDir(), file)
       const content = readFileSync(filePath, 'utf-8')
       if (content.toLowerCase().includes(kw)) {
         results.push({

@@ -1,11 +1,12 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
+import { dataDir } from './paths.js'
 import { listAISafeEvents } from './store.js'
 import { loadProfile, getGestationalWeeks, getStage } from './profile.js'
 import { EVENT_TYPE_LABELS } from './types.js'
 import type { BabyEvent } from './types.js'
 
-const REPORTS_DIR = path.resolve('data/reports')
+function reportsDir() { return path.join(dataDir(), 'reports') }
 
 export function generateReport(yearMonth?: string): string {
   const now = new Date()
@@ -130,12 +131,13 @@ export function writeReport(yearMonth?: string): string {
   const now = new Date()
   const targetMonth = yearMonth || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 
-  if (!existsSync(REPORTS_DIR)) {
-    mkdirSync(REPORTS_DIR, { recursive: true })
+  const dir = reportsDir()
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true })
   }
 
   const md = generateReport(targetMonth)
-  const filePath = path.join(REPORTS_DIR, `${targetMonth}.md`)
+  const filePath = path.join(dir, `${targetMonth}.md`)
   writeFileSync(filePath, md, 'utf-8')
   return filePath
 }

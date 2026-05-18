@@ -1,6 +1,7 @@
 import express from 'express'
 import path from 'node:path'
 import { readFileSync, existsSync } from 'node:fs'
+import { dataDir } from './paths.js'
 import { listEvents, listAISafeEvents } from './store.js'
 import { loadProfile, getGestationalWeeks, getStage } from './profile.js'
 import { loadAttachments } from './attachments.js'
@@ -137,8 +138,8 @@ export function startServer(port = 3456) {
 
   app.get('/api/ai/context', (_req, res) => {
     const format = _req.query.format as string | undefined
-    const contextJsonPath = path.resolve('data/context/remi-context.json')
-    const contextMdPath = path.resolve('data/context/remi-context.md')
+    const contextJsonPath = path.join(dataDir(), 'context/remi-context.json')
+    const contextMdPath = path.join(dataDir(), 'context/remi-context.md')
 
     if (format === 'markdown') {
       if (!existsSync(contextMdPath)) {
