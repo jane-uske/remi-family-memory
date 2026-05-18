@@ -57,6 +57,8 @@ npm run export            # Export full portable archive
 npm run doctor            # Run data health check
 npm run connector         # Run Remi Connector verification demo
 npm run connector:degradation  # Test service-unavailable behavior
+npm run llm:smoke         # Cloud LLM smoke test (requires env vars)
+npm test                  # Run automated test suite
 ```
 
 ## Quick Start
@@ -226,15 +228,46 @@ The adapter layer decouples answer generation from the protocol enforcement:
 
 ```bash
 # Enable cloud adapter (all 3 required):
-FAMILY_MEMORY_LLM_PROVIDER=openai     # or "anthropic"
+FAMILY_MEMORY_LLM_PROVIDER=openai     # See provider support below
 FAMILY_MEMORY_LLM_API_KEY=sk-...      # API key (NEVER commit to repo)
 FAMILY_MEMORY_LLM_MODEL=gpt-4o-mini   # Model name
 
 # Optional:
-FAMILY_MEMORY_LLM_BASE_URL=https://...  # Custom endpoint
+FAMILY_MEMORY_LLM_BASE_URL=https://...  # Custom endpoint (OpenAI-compatible)
 ```
 
 Without these env vars, the system uses the deterministic adapter with zero external dependencies.
+
+### Provider Support (v0.7.1)
+
+| Provider | Status | Protocol |
+|----------|--------|----------|
+| OpenAI | Supported | `/v1/chat/completions` |
+| OpenAI-compatible (Azure, vLLM, Groq, etc.) | Supported via `BASE_URL` | Same protocol |
+| Anthropic | **Not supported** | Different request/response format |
+| Other providers | **Not supported** | Requires adapter implementation |
+
+**Important:** Setting `FAMILY_MEMORY_LLM_PROVIDER=anthropic` will attempt to call the Anthropic endpoint but uses the OpenAI chat completions request format, which will fail. Do NOT use `anthropic` as provider unless a dedicated format adapter is implemented in a future version.
+
+### Smoke Testing (v0.7.1)
+
+Manual validation against a real cloud LLM:
+
+```bash
+FAMILY_MEMORY_LLM_PROVIDER=openai \
+FAMILY_MEMORY_LLM_API_KEY=sk-... \
+FAMILY_MEMORY_LLM_MODEL=gpt-4o-mini \
+npm run llm:smoke
+```
+
+This runs 6 predefined questions (3 answerable, 2 unanswerable, 1 partial) and reports:
+- Whether the LLM respects evidence boundaries
+- Whether sources trace back to provided evidence
+- Whether refusal works for empty evidence
+- Whether output validation catches violations
+- Payload audit safety metrics
+
+Without env vars configured, `npm run llm:smoke` exits cleanly with code 0.
 
 ### What the Cloud Adapter Sends
 
@@ -813,6 +846,13 @@ remi-family-memory/
 - Output validation: reject phantom sources, require evidence backing
 - Fallback to deterministic on cloud failure
 - API key via env vars only (never committed)
+
+### v0.7.1 — Cloud LLM Smoke Validation ✓
+- Real content scanning in auditPayload (blocked/paths/reports/API refs)
+- Safety gate: unsafe payload blocks cloud call, falls back to deterministic
+- `npm run llm:smoke` for manual end-to-end cloud LLM validation
+- Provider scope clarified: OpenAI-compatible only
+- 48 automated tests covering all security boundaries
 
 ### v0.8 — Local LLM Integration
 - Replace cloud validation with local LLM (Ollama, llama.cpp)

@@ -44,10 +44,14 @@ export type SourceRef = {
 export type PayloadAudit = {
   evidenceItemCount: number
   sourceCount: number
-  hasBlockedFromAi: false
-  hasRawEvents: false
-  hasAttachmentRawPath: false
+  hasBlockedFromAi: boolean
+  hasRawEvents: boolean
+  hasAttachmentRawPath: boolean
+  hasReportContent: boolean
+  hasOwnerApi: boolean
   byteSize: number
+  safe: boolean
+  risks: string[]
 }
 
 export interface LLMAdapter {

@@ -42,6 +42,11 @@ export class CloudAdapter implements LLMAdapter {
     const audit = this.auditPayload(input)
     this.logAudit(audit)
 
+    if (!audit.safe) {
+      console.error(`[cloud-adapter] BLOCKED: payload failed safety audit — ${audit.risks.join(', ')}`)
+      return this.fallback.generate(input)
+    }
+
     if (input.evidence.items.length === 0) {
       return {
         answerable: false,
@@ -94,18 +99,50 @@ export class CloudAdapter implements LLMAdapter {
 
   auditPayload(input: LLMInput): PayloadAudit {
     const payloadStr = JSON.stringify(input)
+    const risks: string[] = []
+
+    const blockedPatterns: [RegExp, string][] = [
+      [/blocked_from_ai/i, 'contains blocked_from_ai sensitivity marker'],
+      [/BLOCKED_SECRET/i, 'contains BLOCKED_SECRET content'],
+      [/data\/events/i, 'contains raw event store path'],
+      [/data\/inbox/i, 'contains inbox path'],
+      [/data\/archive/i, 'contains archive path'],
+      [/\/api\/events/i, 'contains owner-facing /api/events reference'],
+      [/data\/attachments/i, 'contains attachment registry path'],
+      [/\.jpg|\.png|\.mp4|\.wav|\.pdf/i, 'contains attachment file extension'],
+      [/data\/reports/i, 'contains report store path'],
+      [/"source"\s*:\s*"report"/i, 'contains report-type source item'],
+    ]
+
+    for (const [pattern, risk] of blockedPatterns) {
+      if (pattern.test(payloadStr)) {
+        risks.push(risk)
+      }
+    }
+
+    const hasBlockedFromAi = /blocked_from_ai|BLOCKED_SECRET/i.test(payloadStr)
+    const hasRawEvents = /data\/events|data\/inbox|data\/archive/i.test(payloadStr)
+    const hasAttachmentRawPath = /data\/attachments|\.jpg|\.png|\.mp4|\.wav|\.pdf/i.test(payloadStr)
+    const hasReportContent = /data\/reports|"source"\s*:\s*"report"/i.test(payloadStr)
+    const hasOwnerApi = /\/api\/events/i.test(payloadStr)
+
     return {
       evidenceItemCount: input.evidence.items.length,
       sourceCount: input.evidence.items.filter((i) => i.memoryId || i.sourceEventId).length,
-      hasBlockedFromAi: false,
-      hasRawEvents: false,
-      hasAttachmentRawPath: false,
+      hasBlockedFromAi,
+      hasRawEvents,
+      hasAttachmentRawPath,
+      hasReportContent,
+      hasOwnerApi,
       byteSize: Buffer.byteLength(payloadStr, 'utf-8'),
+      safe: risks.length === 0,
+      risks,
     }
   }
 
   private logAudit(audit: PayloadAudit): void {
-    console.log(`[cloud-adapter] Payload audit: ${audit.evidenceItemCount} evidence items, ${audit.sourceCount} sources, ${audit.byteSize} bytes`)
+    const status = audit.safe ? 'SAFE' : `UNSAFE [${audit.risks.join('; ')}]`
+    console.log(`[cloud-adapter] Payload audit: ${audit.evidenceItemCount} evidence, ${audit.sourceCount} sources, ${audit.byteSize}B — ${status}`)
   }
 
   private async callLLM(input: LLMInput): Promise<LLMOutput> {
@@ -148,14 +185,10 @@ export class CloudAdapter implements LLMAdapter {
     if (this.config.baseUrl) {
       return `${this.config.baseUrl}/chat/completions`
     }
-    switch (this.config.provider) {
-      case 'openai':
-        return 'https://api.openai.com/v1/chat/completions'
-      case 'anthropic':
-        return 'https://api.anthropic.com/v1/messages'
-      default:
-        return 'https://api.openai.com/v1/chat/completions'
+    if (this.config.provider === 'anthropic') {
+      throw new Error('Anthropic provider not supported in v0.7.1 — requires different request/response format. Use OpenAI-compatible provider or set FAMILY_MEMORY_LLM_BASE_URL.')
     }
+    return 'https://api.openai.com/v1/chat/completions'
   }
 
   private parseLLMResponse(content: string): LLMOutput {

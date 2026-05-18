@@ -245,6 +245,10 @@ describe('v0.7: Cloud adapter payload safety', () => {
     assert.equal(audit.hasBlockedFromAi, false)
     assert.equal(audit.hasRawEvents, false)
     assert.equal(audit.hasAttachmentRawPath, false)
+    assert.equal(audit.hasReportContent, false)
+    assert.equal(audit.hasOwnerApi, false)
+    assert.equal(audit.safe, true)
+    assert.equal(audit.risks.length, 0)
     assert.ok(audit.byteSize > 0)
   })
 })
@@ -384,6 +388,208 @@ describe('v0.7: Connector adapter integration', () => {
     const connector = new RemiConnector('http://localhost:19999')
     const answer = await connector.answer('测试')
     assert.equal(answer.reason, 'service_unavailable')
+  })
+})
+
+// --- v0.7.1: Real Audit Scanning ---
+
+describe('v0.7.1: Audit detects payload risks', () => {
+  it('detects blocked_from_ai in evidence snippet', async () => {
+    const { CloudAdapter } = await import('../adapters/cloud.js')
+    const adapter = new CloudAdapter({ provider: 'openai', apiKey: 'test', model: 'test' })
+
+    const input = {
+      question: '测试',
+      evidence: {
+        query: '测试',
+        items: [{ source: 'memory' as const, memoryId: 'mem-001', date: '2026-05-15', title: '记录', snippet: 'sensitivity: blocked_from_ai' }],
+        fromContext: false,
+        fromSearch: true,
+        collectedAt: new Date().toISOString(),
+      },
+      promptContract: 'grounded_answer_v1',
+    }
+
+    const audit = adapter.auditPayload(input)
+    assert.equal(audit.hasBlockedFromAi, true)
+    assert.equal(audit.safe, false)
+    assert.ok(audit.risks.length > 0)
+  })
+
+  it('detects BLOCKED_SECRET in title', async () => {
+    const { CloudAdapter } = await import('../adapters/cloud.js')
+    const adapter = new CloudAdapter({ provider: 'openai', apiKey: 'test', model: 'test' })
+
+    const input = {
+      question: '测试',
+      evidence: {
+        query: '测试',
+        items: [{ source: 'memory' as const, memoryId: 'mem-001', date: '2026-05-15', title: 'BLOCKED_SECRET', snippet: '内容' }],
+        fromContext: false,
+        fromSearch: true,
+        collectedAt: new Date().toISOString(),
+      },
+      promptContract: 'grounded_answer_v1',
+    }
+
+    const audit = adapter.auditPayload(input)
+    assert.equal(audit.hasBlockedFromAi, true)
+    assert.equal(audit.safe, false)
+  })
+
+  it('detects raw event paths in snippet', async () => {
+    const { CloudAdapter } = await import('../adapters/cloud.js')
+    const adapter = new CloudAdapter({ provider: 'openai', apiKey: 'test', model: 'test' })
+
+    const input = {
+      question: '测试',
+      evidence: {
+        query: '测试',
+        items: [{ source: 'memory' as const, memoryId: 'mem-001', date: '2026-05-15', title: '记录', snippet: 'path: data/events/events.json' }],
+        fromContext: false,
+        fromSearch: true,
+        collectedAt: new Date().toISOString(),
+      },
+      promptContract: 'grounded_answer_v1',
+    }
+
+    const audit = adapter.auditPayload(input)
+    assert.equal(audit.hasRawEvents, true)
+    assert.equal(audit.safe, false)
+  })
+
+  it('detects owner-facing API reference', async () => {
+    const { CloudAdapter } = await import('../adapters/cloud.js')
+    const adapter = new CloudAdapter({ provider: 'openai', apiKey: 'test', model: 'test' })
+
+    const input = {
+      question: '测试',
+      evidence: {
+        query: '测试',
+        items: [{ source: 'memory' as const, memoryId: 'mem-001', date: '2026-05-15', title: '记录', snippet: 'see /api/events for all data' }],
+        fromContext: false,
+        fromSearch: true,
+        collectedAt: new Date().toISOString(),
+      },
+      promptContract: 'grounded_answer_v1',
+    }
+
+    const audit = adapter.auditPayload(input)
+    assert.equal(audit.hasOwnerApi, true)
+    assert.equal(audit.safe, false)
+  })
+
+  it('detects attachment file paths', async () => {
+    const { CloudAdapter } = await import('../adapters/cloud.js')
+    const adapter = new CloudAdapter({ provider: 'openai', apiKey: 'test', model: 'test' })
+
+    const input = {
+      question: '测试',
+      evidence: {
+        query: '测试',
+        items: [{ source: 'memory' as const, memoryId: 'mem-001', date: '2026-05-15', title: '记录', snippet: 'file at data/attachments/photo.jpg' }],
+        fromContext: false,
+        fromSearch: true,
+        collectedAt: new Date().toISOString(),
+      },
+      promptContract: 'grounded_answer_v1',
+    }
+
+    const audit = adapter.auditPayload(input)
+    assert.equal(audit.hasAttachmentRawPath, true)
+    assert.equal(audit.safe, false)
+  })
+
+  it('detects report source type in evidence', async () => {
+    const { CloudAdapter } = await import('../adapters/cloud.js')
+    const adapter = new CloudAdapter({ provider: 'openai', apiKey: 'test', model: 'test' })
+
+    const input = {
+      question: '测试',
+      evidence: {
+        query: '测试',
+        items: [{ source: 'memory' as const, memoryId: 'mem-001', date: '2026-05-15', title: '月度报告', snippet: '来自 data/reports/2026-05.md' }],
+        fromContext: false,
+        fromSearch: true,
+        collectedAt: new Date().toISOString(),
+      },
+      promptContract: 'grounded_answer_v1',
+    }
+
+    const audit = adapter.auditPayload(input)
+    assert.equal(audit.hasReportContent, true)
+    assert.equal(audit.safe, false)
+  })
+
+  it('clean payload passes audit', async () => {
+    const { CloudAdapter } = await import('../adapters/cloud.js')
+    const adapter = new CloudAdapter({ provider: 'openai', apiKey: 'test', model: 'test' })
+
+    const input = {
+      question: '最近孕检情况',
+      evidence: {
+        query: '孕检',
+        items: [{ source: 'memory' as const, memoryId: 'mem-001', date: '2026-05-15', title: '16周常规孕检', snippet: '各项指标正常' }],
+        fromContext: false,
+        fromSearch: true,
+        collectedAt: new Date().toISOString(),
+      },
+      promptContract: 'grounded_answer_v1',
+    }
+
+    const audit = adapter.auditPayload(input)
+    assert.equal(audit.safe, true)
+    assert.equal(audit.risks.length, 0)
+  })
+})
+
+describe('v0.7.1: Unsafe payload blocks cloud call', () => {
+  it('generate() falls back to deterministic when audit fails', async () => {
+    const { CloudAdapter } = await import('../adapters/cloud.js')
+    const adapter = new CloudAdapter({ provider: 'openai', apiKey: 'test', model: 'test', baseUrl: 'http://localhost:19999' })
+
+    const input = {
+      question: '测试',
+      evidence: {
+        query: '测试',
+        items: [{ source: 'memory' as const, memoryId: 'mem-001', date: '2026-05-15', title: '记录', snippet: 'blocked_from_ai content here' }],
+        fromContext: false,
+        fromSearch: true,
+        collectedAt: new Date().toISOString(),
+      },
+      promptContract: 'grounded_answer_v1',
+    }
+
+    const result = await adapter.generate(input)
+    assert.equal(result.answerable, true, 'fallback to deterministic should still answer')
+    assert.ok(result.sourceRefs.length > 0, 'fallback should provide sources')
+  })
+})
+
+describe('v0.7.1: Provider error handling', () => {
+  it('local adapter throws clear error', async () => {
+    const { createAdapter } = await import('../adapters/index.js')
+    assert.throws(() => createAdapter('local'), /not yet implemented/)
+  })
+
+  it('cloud adapter without valid endpoint falls back gracefully', async () => {
+    const { CloudAdapter } = await import('../adapters/cloud.js')
+    const adapter = new CloudAdapter({ provider: 'openai', apiKey: 'invalid-key', model: 'nonexistent', baseUrl: 'http://localhost:19999' })
+
+    const result = await adapter.generate({
+      question: '测试',
+      evidence: {
+        query: '测试',
+        items: [{ source: 'memory' as const, memoryId: 'mem-001', date: '2026-05-15', title: '记录', snippet: '内容' }],
+        fromContext: false,
+        fromSearch: true,
+        collectedAt: new Date().toISOString(),
+      },
+      promptContract: 'grounded_answer_v1',
+    })
+
+    assert.equal(result.answerable, true, 'must fallback to deterministic')
+    assert.ok(result.sourceRefs.length > 0)
   })
 })
 
