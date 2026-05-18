@@ -134,11 +134,20 @@ export type MemoriesResponse = {
 
 export class RemiConnector {
   private baseUrl: string
+  private token: string | null
   private status: ConnectorStatus = 'unavailable'
   private context: ContextResponse | null = null
 
-  constructor(baseUrl = DEFAULT_BASE_URL) {
+  constructor(baseUrl = DEFAULT_BASE_URL, token: string | null = null) {
     this.baseUrl = baseUrl
+    this.token = token
+  }
+
+  private headers(): Record<string, string> {
+    if (this.token) {
+      return { 'Authorization': `Bearer ${this.token}` }
+    }
+    return {}
   }
 
   getStatus(): ConnectorStatus {
@@ -151,7 +160,7 @@ export class RemiConnector {
 
   async connect(): Promise<{ ok: boolean; error?: string }> {
     try {
-      const res = await fetch(`${this.baseUrl}/api/health`)
+      const res = await fetch(`${this.baseUrl}/api/ai/health`, { headers: this.headers() })
       if (!res.ok) {
         this.status = 'unavailable'
         return { ok: false, error: `Health check failed: HTTP ${res.status}` }
@@ -174,7 +183,7 @@ export class RemiConnector {
       return { ok: false, error: '家庭记忆服务暂不可用，无法加载上下文。' }
     }
     try {
-      const res = await fetch(`${this.baseUrl}/api/context`)
+      const res = await fetch(`${this.baseUrl}/api/ai/context`, { headers: this.headers() })
       if (!res.ok) {
         this.status = 'degraded'
         return { ok: false, error: `Context load failed: HTTP ${res.status}` }
@@ -193,7 +202,7 @@ export class RemiConnector {
       return { ok: false, error: '家庭记忆服务暂不可用，无法搜索。' }
     }
     try {
-      const res = await fetch(`${this.baseUrl}/api/search?q=${encodeURIComponent(query)}`)
+      const res = await fetch(`${this.baseUrl}/api/ai/search?q=${encodeURIComponent(query)}`, { headers: this.headers() })
       if (!res.ok) {
         return { ok: false, error: `Search failed: HTTP ${res.status}` }
       }

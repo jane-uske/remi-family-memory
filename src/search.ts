@@ -78,6 +78,45 @@ export function search(keyword: string): SearchResult[] {
   return results
 }
 
+export function aiSearch(keyword: string): SearchResult[] {
+  const results: SearchResult[] = []
+  const kw = keyword.toLowerCase()
+
+  const events = listAISafeEvents()
+  for (const e of events) {
+    const searchable = [e.title, e.summary || '', e.tags.join(' '), e.people.join(' ')].join(' ')
+    if (searchable.toLowerCase().includes(kw)) {
+      results.push({
+        type: 'event',
+        date: e.occurredAt.slice(0, 10),
+        eventType: EVENT_TYPE_LABELS[e.type] || e.type,
+        title: e.title,
+        matchedText: extractContext(searchable, kw),
+        sourcePath: e.source.path,
+      })
+    }
+  }
+
+  const memories = loadMemories()
+  for (const m of memories) {
+    const searchable = [m.title, m.summary, m.facts.join(' '), m.tags.join(' '), m.people.join(' ')].join(' ')
+    if (searchable.toLowerCase().includes(kw)) {
+      results.push({
+        type: 'memory',
+        date: m.date,
+        eventType: EVENT_TYPE_LABELS[m.type] || m.type,
+        title: m.title,
+        matchedText: extractContext(searchable, kw),
+        importance: m.importance,
+        memoryId: m.memoryId,
+        sourceEventId: m.sourceEventId,
+      })
+    }
+  }
+
+  return results
+}
+
 function extractContext(text: string, keyword: string, windowSize = 60): string {
   const lower = text.toLowerCase()
   const idx = lower.indexOf(keyword)

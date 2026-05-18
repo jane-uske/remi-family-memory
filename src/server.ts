@@ -1,21 +1,59 @@
 import express from 'express'
 import path from 'node:path'
 import { readFileSync, existsSync } from 'node:fs'
-import { listEvents } from './store.js'
+import { listEvents, listAISafeEvents } from './store.js'
 import { loadProfile, getGestationalWeeks, getStage } from './profile.js'
 import { loadAttachments } from './attachments.js'
 import { loadMemories, buildMemories } from './memory.js'
 import { generateContext } from './context.js'
-import { search } from './search.js'
+import { aiSearch } from './search.js'
 import { runDoctor } from './doctor.js'
 import { SCHEMA_VERSION } from './types.js'
+import type { Request, Response, NextFunction } from 'express'
+
+function getToken(): string | null {
+  return process.env.FAMILY_MEMORY_TOKEN || null
+}
+
+function aiAuthMiddleware(req: Request, res: Response, next: NextFunction): void {
+  const token = getToken()
+
+  if (!token) {
+    next()
+    return
+  }
+
+  const authHeader = req.headers.authorization
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    res.status(401).json({
+      error: 'unauthorized',
+      message: 'Missing or malformed Authorization header. Use: Bearer <token>',
+    })
+    return
+  }
+
+  const provided = authHeader.slice(7)
+  if (provided !== token) {
+    res.status(403).json({
+      error: 'forbidden',
+      message: 'Invalid token.',
+    })
+    return
+  }
+
+  next()
+}
 
 export function startServer(port = 3456) {
   const app = express()
 
   app.use(express.static(path.resolve('web')))
 
-  // --- User-facing APIs (web dashboard — shows all data, user owns it) ---
+  // ============================================================
+  // Owner-facing APIs — full data access for web dashboard
+  // These endpoints return ALL events including blocked_from_ai.
+  // They are NOT safe for AI/LLM consumption.
+  // ============================================================
 
   app.get('/api/profile', (_req, res) => {
     const profile = loadProfile()
@@ -51,9 +89,16 @@ export function startServer(port = 3456) {
     res.json(attachments)
   })
 
-  // --- AI-facing APIs (Remi integration — blocked_from_ai filtered) ---
+  // ============================================================
+  // AI-facing APIs — filtered, token-protected
+  // These endpoints NEVER return blocked_from_ai content.
+  // RemiConnector MUST use only these endpoints.
+  // Protected by FAMILY_MEMORY_TOKEN when configured.
+  // ============================================================
 
-  app.get('/api/health', (_req, res) => {
+  app.use('/api/ai', aiAuthMiddleware)
+
+  app.get('/api/ai/health', (_req, res) => {
     const results = runDoctor()
     const checks: Record<string, string> = {}
     const checkNameMap: Record<string, string> = {
@@ -77,7 +122,7 @@ export function startServer(port = 3456) {
     })
   })
 
-  app.get('/api/memories', (_req, res) => {
+  app.get('/api/ai/memories', (_req, res) => {
     const memories = loadMemories()
     const importance = _req.query.importance as string | undefined
     const filtered = importance
@@ -90,7 +135,7 @@ export function startServer(port = 3456) {
     })
   })
 
-  app.get('/api/context', (_req, res) => {
+  app.get('/api/ai/context', (_req, res) => {
     const format = _req.query.format as string | undefined
     const contextJsonPath = path.resolve('data/context/remi-context.json')
     const contextMdPath = path.resolve('data/context/remi-context.md')
@@ -113,39 +158,21 @@ export function startServer(port = 3456) {
     res.json(json)
   })
 
-  app.get('/api/search', (_req, res) => {
+  app.get('/api/ai/search', (_req, res) => {
     const q = (_req.query.q as string || '').trim()
     if (!q) {
       res.status(400).json({ error: 'Missing query parameter: q' })
       return
     }
-    const allResults = search(q)
-    const events = listEvents()
-    const blockedEvents = events.filter((e) => e.sensitivity === 'blocked_from_ai')
-    const blockedTitles = new Set(blockedEvents.map((e) => e.title))
-    const blockedSummaries = new Set(
-      blockedEvents.map((e) => e.summary).filter(Boolean)
-    )
-    const filtered = allResults.filter((r) => {
-      if (blockedTitles.has(r.title)) return false
-      if (r.type === 'report') {
-        for (const title of blockedTitles) {
-          if (r.matchedText.includes(title)) return false
-        }
-        for (const summary of blockedSummaries) {
-          if (summary && r.matchedText.includes(summary.slice(0, 50))) return false
-        }
-      }
-      return true
-    })
+    const results = aiSearch(q)
     res.json({
       query: q,
-      total: filtered.length,
-      results: filtered,
+      total: results.length,
+      results,
     })
   })
 
-  app.post('/api/rebuild', (_req, res) => {
+  app.post('/api/ai/rebuild', (_req, res) => {
     try {
       const memoryResult = buildMemories()
       const contextResult = generateContext()
@@ -167,20 +194,27 @@ export function startServer(port = 3456) {
     }
   })
 
-  app.listen(port, () => {
+  const server = app.listen(port, () => {
+    const tokenSet = !!getToken()
     console.log(`Remi Family Memory Service: http://localhost:${port}`)
     console.log()
-    console.log('  Web:')
-    console.log(`    Timeline:  http://localhost:${port}/`)
-    console.log(`    Profile:   http://localhost:${port}/profile.html`)
+    console.log('  Web (owner-facing):')
+    console.log(`    Timeline:    http://localhost:${port}/`)
+    console.log(`    Profile:     http://localhost:${port}/profile.html`)
     console.log()
-    console.log('  API (Remi Integration):')
-    console.log(`    Health:    GET /api/health`)
-    console.log(`    Profile:   GET /api/profile`)
-    console.log(`    Events:    GET /api/events`)
-    console.log(`    Memories:  GET /api/memories`)
-    console.log(`    Context:   GET /api/context`)
-    console.log(`    Search:    GET /api/search?q=keyword`)
-    console.log(`    Rebuild:   POST /api/rebuild`)
+    console.log(`  AI API (token: ${tokenSet ? 'required' : 'open (set FAMILY_MEMORY_TOKEN to protect)'}):`)
+    console.log(`    Health:      GET  /api/ai/health`)
+    console.log(`    Context:     GET  /api/ai/context`)
+    console.log(`    Memories:    GET  /api/ai/memories`)
+    console.log(`    Search:      GET  /api/ai/search?q=keyword`)
+    console.log(`    Rebuild:     POST /api/ai/rebuild`)
+    console.log()
+    console.log('  Owner API (no auth, web dashboard):')
+    console.log(`    Events:      GET  /api/events`)
+    console.log(`    Profile:     GET  /api/profile`)
+    console.log(`    Stats:       GET  /api/stats`)
+    console.log(`    Attachments: GET  /api/attachments`)
   })
+
+  return server
 }

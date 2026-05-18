@@ -253,3 +253,133 @@ describe('Protocol: Grounded Answer contract', () => {
     }
   })
 })
+
+// --- v0.6.2: AI Boundary & Access Control Tests ---
+
+describe('v0.6.2: AI-facing search excludes reports', () => {
+  before(() => backupAndSetFixtures())
+  after(() => restoreOriginal())
+
+  it('aiSearch() returns only events and memories, never reports', async () => {
+    const { aiSearch } = await import('../search.js')
+    const { buildMemories } = await import('../memory.js')
+
+    mkdirSync(REPORTS_DIR, { recursive: true })
+    writeFileSync(
+      path.join(REPORTS_DIR, '2026-05.md'),
+      '# 月报 2026-05\n\n包含关键词：孕检\n',
+      'utf-8'
+    )
+
+    buildMemories()
+    const results = aiSearch('孕检')
+
+    for (const r of results) {
+      assert.notEqual(r.type, 'report', 'aiSearch must never return report-type results')
+    }
+    assert.ok(results.length > 0, 'aiSearch should still find events/memories')
+  })
+
+  it('aiSearch() excludes blocked events', async () => {
+    const { aiSearch } = await import('../search.js')
+    const results = aiSearch('BLOCKED_SECRET')
+    const blocked = results.find((r) => r.title === BLOCKED_EVENT.title)
+    assert.equal(blocked, undefined, 'aiSearch must not return blocked events')
+  })
+
+  it('full search() still includes reports for owner', async () => {
+    const { search } = await import('../search.js')
+
+    mkdirSync(REPORTS_DIR, { recursive: true })
+    writeFileSync(
+      path.join(REPORTS_DIR, '2026-05.md'),
+      '# 月报 2026-05\n\n包含关键词：孕检\n',
+      'utf-8'
+    )
+
+    const results = search('孕检')
+    const reportResult = results.find((r) => r.type === 'report')
+    assert.ok(reportResult, 'owner-facing search should include reports')
+  })
+})
+
+describe('v0.6.2: Token auth middleware', () => {
+  let server: any = null
+  const TEST_PORT = 19876
+  const TEST_TOKEN = 'test-secret-token-xyz'
+
+  before(async () => {
+    backupAndSetFixtures()
+    process.env.FAMILY_MEMORY_TOKEN = TEST_TOKEN
+    const { startServer } = await import('../server.js')
+    await new Promise<void>((resolve) => {
+      server = startServer(TEST_PORT) as any
+      setTimeout(resolve, 200)
+    })
+  })
+
+  after(() => {
+    delete process.env.FAMILY_MEMORY_TOKEN
+    restoreOriginal()
+    if (server) {
+      (server as any).close()
+    }
+  })
+
+  it('AI endpoints reject requests without token', async () => {
+    const res = await fetch(`http://localhost:${TEST_PORT}/api/ai/health`)
+    assert.equal(res.status, 401)
+  })
+
+  it('AI endpoints reject requests with wrong token', async () => {
+    const res = await fetch(`http://localhost:${TEST_PORT}/api/ai/health`, {
+      headers: { 'Authorization': 'Bearer wrong-token' },
+    })
+    assert.equal(res.status, 403)
+  })
+
+  it('AI endpoints accept requests with correct token', async () => {
+    const res = await fetch(`http://localhost:${TEST_PORT}/api/ai/health`, {
+      headers: { 'Authorization': `Bearer ${TEST_TOKEN}` },
+    })
+    assert.equal(res.status, 200)
+    const data = await res.json() as { ok: boolean }
+    assert.equal(data.ok, true)
+  })
+
+  it('Owner endpoints remain accessible without token', async () => {
+    const res = await fetch(`http://localhost:${TEST_PORT}/api/events`)
+    assert.equal(res.status, 200)
+  })
+
+  it('RemiConnector passes token correctly', async () => {
+    const { RemiConnector } = await import('../connector.js')
+    const connector = new RemiConnector(`http://localhost:${TEST_PORT}`, TEST_TOKEN)
+    const result = await connector.connect()
+    assert.equal(result.ok, true)
+  })
+
+  it('RemiConnector fails without token when required', async () => {
+    const { RemiConnector } = await import('../connector.js')
+    const connector = new RemiConnector(`http://localhost:${TEST_PORT}`)
+    const result = await connector.connect()
+    assert.equal(result.ok, false)
+  })
+})
+
+describe('v0.6.2: RemiConnector uses AI-facing endpoints only', () => {
+  it('connector calls /api/ai/* paths', async () => {
+    const { RemiConnector } = await import('../connector.js')
+    const connector = new RemiConnector('http://localhost:19999', 'some-token')
+
+    const connectResult = await connector.connect()
+    assert.equal(connectResult.ok, false)
+    assert.ok(connectResult.error?.includes('family-memory service'))
+  })
+
+  it('connector constructor accepts token parameter', async () => {
+    const { RemiConnector } = await import('../connector.js')
+    const connector = new RemiConnector('http://localhost:3456', 'my-token')
+    assert.ok(connector, 'connector should be instantiable with token')
+  })
+})
