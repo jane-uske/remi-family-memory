@@ -10,3 +10,4 @@ data/context/
 data/drafts/
 *.log
 .DS_Store
+experimental/output/

@@ -1,0 +1,16 @@
+# Ignore all image files — never commit real photos
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.tiff
+*.tif
+*.webp
+*.heic
+*.heif
+*.svg
+
+# Keep this .gitignore and README
+!.gitignore
+!README.md
