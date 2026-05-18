@@ -36,3 +36,7 @@ export function listEvents(): BabyEvent[] {
 export function hasSourcePath(sourcePath: string): boolean {
   return loadEvents().some((e) => e.source.path === sourcePath)
 }
+
+export function listAISafeEvents(): BabyEvent[] {
+  return listEvents().filter((e) => e.sensitivity !== 'blocked_from_ai')
+}

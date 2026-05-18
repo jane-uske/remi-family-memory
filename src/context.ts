@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import { listEvents } from './store.js'
+import { listEvents, listAISafeEvents } from './store.js'
 import { loadProfile, getGestationalWeeks, getStage } from './profile.js'
 import { loadAttachments } from './attachments.js'
 import { loadMemories } from './memory.js'
@@ -16,7 +16,8 @@ export function generateContext(): { mdPath: string; jsonPath: string } {
   ensureDir()
 
   const profile = loadProfile()
-  const events = listEvents()
+  const events = listAISafeEvents()
+  const allEvents = listEvents()
   const memories = loadMemories()
   const attachments = loadAttachments()
 

@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import { listEvents } from './store.js'
+import { listAISafeEvents } from './store.js'
 import { loadProfile, getGestationalWeeks, getStage } from './profile.js'
 import { EVENT_TYPE_LABELS } from './types.js'
 import type { BabyEvent } from './types.js'
@@ -12,7 +12,7 @@ export function generateReport(yearMonth?: string): string {
   const targetMonth = yearMonth || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   const [year, month] = targetMonth.split('-').map(Number)
 
-  const allEvents = listEvents()
+  const allEvents = listAISafeEvents()
   const monthEvents = allEvents.filter((e) => {
     const d = new Date(e.occurredAt)
     return d.getFullYear() === year && d.getMonth() + 1 === month
@@ -32,9 +32,10 @@ export function generateReport(yearMonth?: string): string {
 
   if (profile) {
     const stage = getStage(profile)
-    const weeks = getGestationalWeeks(profile)
+    const reportDate = new Date(year, month - 1, 28)
+    const weeks = getGestationalWeeks(profile, reportDate)
     md += `> ${profile.familyName || ''}${profile.nickname} | ${stage}`
-    if (weeks !== null) md += ` | 当前孕周：第 ${weeks} 周`
+    if (weeks !== null) md += ` | 孕周：第 ${weeks} 周`
     md += `\n\n`
   }
 

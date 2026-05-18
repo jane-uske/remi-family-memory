@@ -1,6 +1,6 @@
 {
   "name": "remi-family-memory",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "A local-first family memory system — Grounded Answer Protocol for Remi/AI",
   "type": "module",
   "scripts": {
@@ -16,6 +16,7 @@
     "doctor": "tsx src/cli.ts doctor",
     "connector": "tsx src/cli.ts connector",
     "connector:degradation": "tsx src/cli.ts connector degradation",
+    "test": "node --import tsx/esm --test src/tests/privacy.test.ts",
     "build": "tsc"
   },
   "dependencies": {

@@ -23,12 +23,12 @@ export function saveProfile(profile: BabyProfile): void {
   writeFileSync(PROFILE_FILE, JSON.stringify(profile, null, 2), 'utf-8')
 }
 
-export function getGestationalWeeks(profile: BabyProfile): number | null {
+export function getGestationalWeeks(profile: BabyProfile, referenceDate?: Date): number | null {
   if (!profile.expectedBirthDate) return null
   const edd = new Date(profile.expectedBirthDate)
   const conceptionApprox = new Date(edd.getTime() - 280 * 24 * 60 * 60 * 1000)
-  const now = new Date()
-  const diffMs = now.getTime() - conceptionApprox.getTime()
+  const ref = referenceDate || new Date()
+  const diffMs = ref.getTime() - conceptionApprox.getTime()
   const weeks = Math.floor(diffMs / (7 * 24 * 60 * 60 * 1000))
   if (weeks < 0 || weeks > 42) return null
   return weeks

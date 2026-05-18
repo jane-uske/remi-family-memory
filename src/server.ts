@@ -15,7 +15,7 @@ export function startServer(port = 3456) {
 
   app.use(express.static(path.resolve('web')))
 
-  // --- Existing Web-facing APIs ---
+  // --- User-facing APIs (web dashboard — shows all data, user owns it) ---
 
   app.get('/api/profile', (_req, res) => {
     const profile = loadProfile()
@@ -51,7 +51,7 @@ export function startServer(port = 3456) {
     res.json(attachments)
   })
 
-  // --- v0.4: Local Memory Service APIs ---
+  // --- AI-facing APIs (Remi integration — blocked_from_ai filtered) ---
 
   app.get('/api/health', (_req, res) => {
     const results = runDoctor()
@@ -121,16 +121,20 @@ export function startServer(port = 3456) {
     }
     const allResults = search(q)
     const events = listEvents()
-    const blockedPaths = new Set(
-      events.filter((e) => e.sensitivity === 'blocked_from_ai').map((e) => e.source.path)
-    )
-    const blockedTitles = new Set(
-      events.filter((e) => e.sensitivity === 'blocked_from_ai').map((e) => e.title)
+    const blockedEvents = events.filter((e) => e.sensitivity === 'blocked_from_ai')
+    const blockedTitles = new Set(blockedEvents.map((e) => e.title))
+    const blockedSummaries = new Set(
+      blockedEvents.map((e) => e.summary).filter(Boolean)
     )
     const filtered = allResults.filter((r) => {
-      if (r.type === 'event') {
-        if (r.sourcePath && blockedPaths.has(r.sourcePath)) return false
-        if (blockedTitles.has(r.title)) return false
+      if (blockedTitles.has(r.title)) return false
+      if (r.type === 'report') {
+        for (const title of blockedTitles) {
+          if (r.matchedText.includes(title)) return false
+        }
+        for (const summary of blockedSummaries) {
+          if (summary && r.matchedText.includes(summary.slice(0, 50))) return false
+        }
       }
       return true
     })

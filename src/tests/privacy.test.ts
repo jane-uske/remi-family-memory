@@ -1,0 +1,255 @@
+import { describe, it, before, after } from 'node:test'
+import assert from 'node:assert/strict'
+import { writeFileSync, mkdirSync, existsSync, rmSync, readFileSync } from 'node:fs'
+import path from 'node:path'
+
+import type { BabyEvent, BabyProfile } from '../types.js'
+import { SCHEMA_VERSION } from '../types.js'
+
+// --- Test Fixtures ---
+
+const TEST_DATA_DIR = path.resolve('data')
+const EVENTS_FILE = path.join(TEST_DATA_DIR, 'events', 'events.json')
+const PROFILE_FILE = path.join(TEST_DATA_DIR, 'profile', 'baby.json')
+const MEMORY_FILE = path.join(TEST_DATA_DIR, 'memory', 'memories.json')
+const CONTEXT_JSON = path.join(TEST_DATA_DIR, 'context', 'remi-context.json')
+const REPORTS_DIR = path.join(TEST_DATA_DIR, 'reports')
+
+const BLOCKED_EVENT: BabyEvent = {
+  id: 'blocked-test-001',
+  childId: 'baby-001',
+  schemaVersion: SCHEMA_VERSION,
+  occurredAt: '2026-05-12T00:00:00.000Z',
+  type: 'medical_record',
+  title: 'BLOCKED_SECRET_TITLE',
+  summary: 'BLOCKED_SECRET_SUMMARY with sensitive content that must never leak',
+  source: { kind: 'manual', path: 'test/blocked.md' },
+  people: ['妈妈'],
+  tags: ['秘密标签'],
+  sensitivity: 'blocked_from_ai',
+  confirmedByParent: true,
+  createdAt: '2026-05-12T00:00:00.000Z',
+  updatedAt: '2026-05-12T00:00:00.000Z',
+}
+
+const NORMAL_EVENT: BabyEvent = {
+  id: 'normal-test-001',
+  childId: 'baby-001',
+  schemaVersion: SCHEMA_VERSION,
+  occurredAt: '2026-05-15T00:00:00.000Z',
+  type: 'pregnancy_checkup',
+  title: '16周常规孕检',
+  summary: '各项指标正常，宝宝发育良好。',
+  source: { kind: 'folder', path: 'data/inbox/notes/checkup.md' },
+  people: ['妈妈', '爸爸'],
+  tags: ['孕检', '16周'],
+  sensitivity: 'normal',
+  confirmedByParent: true,
+  createdAt: '2026-05-15T00:00:00.000Z',
+  updatedAt: '2026-05-15T00:00:00.000Z',
+}
+
+const TEST_PROFILE: BabyProfile = {
+  babyId: 'baby-001',
+  nickname: '小宝',
+  familyName: '吴',
+  expectedBirthDate: '2026-11-15',
+  pregnancyStartDate: '2026-02-08',
+  parents: [
+    { role: 'father', name: '吴健', nickname: '爸爸' },
+    { role: 'mother', name: '', nickname: '妈妈' },
+  ],
+  createdAt: '2026-05-18T00:00:00.000Z',
+  updatedAt: '2026-05-18T00:00:00.000Z',
+}
+
+let originalEvents: string | null = null
+let originalMemories: string | null = null
+
+function backupAndSetFixtures() {
+  if (existsSync(EVENTS_FILE)) {
+    originalEvents = readFileSync(EVENTS_FILE, 'utf-8')
+  }
+  if (existsSync(MEMORY_FILE)) {
+    originalMemories = readFileSync(MEMORY_FILE, 'utf-8')
+  }
+
+  mkdirSync(path.dirname(EVENTS_FILE), { recursive: true })
+  mkdirSync(path.dirname(PROFILE_FILE), { recursive: true })
+  mkdirSync(path.dirname(MEMORY_FILE), { recursive: true })
+  mkdirSync(path.join(TEST_DATA_DIR, 'context'), { recursive: true })
+  mkdirSync(REPORTS_DIR, { recursive: true })
+
+  const fixtures = [BLOCKED_EVENT, NORMAL_EVENT]
+  writeFileSync(EVENTS_FILE, JSON.stringify(fixtures, null, 2), 'utf-8')
+  writeFileSync(PROFILE_FILE, JSON.stringify(TEST_PROFILE, null, 2), 'utf-8')
+}
+
+function restoreOriginal() {
+  if (originalEvents !== null) {
+    writeFileSync(EVENTS_FILE, originalEvents, 'utf-8')
+  }
+  if (originalMemories !== null) {
+    writeFileSync(MEMORY_FILE, originalMemories, 'utf-8')
+  }
+}
+
+// --- Privacy Boundary Tests ---
+
+describe('Privacy: blocked_from_ai filtering', () => {
+  before(() => backupAndSetFixtures())
+  after(() => restoreOriginal())
+
+  it('buildMemories() excludes blocked events', async () => {
+    const { buildMemories, loadMemories } = await import('../memory.js')
+    buildMemories()
+    const memories = loadMemories()
+
+    const blockedMemory = memories.find((m) => m.sourceEventId === BLOCKED_EVENT.id)
+    assert.equal(blockedMemory, undefined, 'blocked event must not appear in memory store')
+
+    const normalMemory = memories.find((m) => m.sourceEventId === NORMAL_EVENT.id)
+    assert.ok(normalMemory, 'normal event should be in memory store')
+  })
+
+  it('generateContext() excludes blocked events from recentEvents', async () => {
+    const { generateContext } = await import('../context.js')
+    generateContext()
+
+    const contextRaw = readFileSync(CONTEXT_JSON, 'utf-8')
+    const context = JSON.parse(contextRaw)
+
+    const blockedInRecent = context.recentEvents?.some(
+      (e: { title: string }) => e.title === BLOCKED_EVENT.title
+    )
+    assert.equal(blockedInRecent, false, 'blocked event must not appear in recentEvents')
+
+    assert.ok(
+      !contextRaw.includes('BLOCKED_SECRET_TITLE'),
+      'blocked title must not appear anywhere in context JSON'
+    )
+    assert.ok(
+      !contextRaw.includes('BLOCKED_SECRET_SUMMARY'),
+      'blocked summary must not appear anywhere in context JSON'
+    )
+  })
+
+  it('generateContext() excludes blocked events from parentNotes', async () => {
+    const { generateContext } = await import('../context.js')
+    generateContext()
+
+    const contextRaw = readFileSync(CONTEXT_JSON, 'utf-8')
+    const context = JSON.parse(contextRaw)
+
+    const blockedInNotes = context.recentParentNotes?.some(
+      (e: { title: string }) => e.title === BLOCKED_EVENT.title
+    )
+    assert.equal(blockedInNotes, false, 'blocked event must not appear in recentParentNotes')
+  })
+
+  it('generateReport() excludes blocked events', async () => {
+    const { generateReport } = await import('../report.js')
+    const report = generateReport('2026-05')
+
+    assert.ok(
+      !report.includes('BLOCKED_SECRET_TITLE'),
+      'blocked title must not appear in report'
+    )
+    assert.ok(
+      !report.includes('BLOCKED_SECRET_SUMMARY'),
+      'blocked summary must not appear in report'
+    )
+    assert.ok(
+      report.includes('16周常规孕检'),
+      'normal event should still appear in report'
+    )
+  })
+
+  it('search() excludes blocked events from results', async () => {
+    const { search } = await import('../search.js')
+
+    const results = search('BLOCKED_SECRET')
+    const blockedResult = results.find((r) => r.title === BLOCKED_EVENT.title)
+    assert.equal(blockedResult, undefined, 'blocked event must not appear in search results')
+
+    const results2 = search('秘密标签')
+    const blockedByTag = results2.find((r) => r.title === BLOCKED_EVENT.title)
+    assert.equal(blockedByTag, undefined, 'blocked event must not be findable by tag')
+  })
+
+  it('search() still finds normal events', async () => {
+    const { search } = await import('../search.js')
+    const results = search('孕检')
+    const normalResult = results.find((r) => r.title === NORMAL_EVENT.title)
+    assert.ok(normalResult, 'normal events should still be searchable')
+  })
+})
+
+// --- Gestational Weeks Tests ---
+
+describe('Gestational weeks: historical date accuracy', () => {
+  it('getGestationalWeeks with past date returns correct weeks', async () => {
+    const { getGestationalWeeks } = await import('../profile.js')
+
+    // EDD = 2026-11-15, LMP approx = EDD - 280 days = 2026-02-08
+    // At 2026-05-15: (2026-05-15 - 2026-02-08) = 96 days / 7 = ~13 weeks
+    const pastDate = new Date('2026-05-15')
+    const weeks = getGestationalWeeks(TEST_PROFILE, pastDate)
+    assert.ok(weeks !== null, 'weeks should not be null')
+    assert.ok(weeks >= 13 && weeks <= 14, `expected ~13 weeks, got ${weeks}`)
+  })
+
+  it('getGestationalWeeks with different dates returns different values', async () => {
+    const { getGestationalWeeks } = await import('../profile.js')
+
+    const may1 = getGestationalWeeks(TEST_PROFILE, new Date('2026-05-01'))
+    const june1 = getGestationalWeeks(TEST_PROFILE, new Date('2026-06-01'))
+    assert.ok(may1 !== null && june1 !== null)
+    assert.ok(june1! > may1!, `June weeks (${june1}) should be greater than May weeks (${may1})`)
+  })
+
+  it('getGestationalWeeks without date parameter uses current time', async () => {
+    const { getGestationalWeeks } = await import('../profile.js')
+    const withoutDate = getGestationalWeeks(TEST_PROFILE)
+    const withNow = getGestationalWeeks(TEST_PROFILE, new Date())
+    assert.equal(withoutDate, withNow)
+  })
+})
+
+// --- Protocol Invariants ---
+
+describe('Protocol: Grounded Answer contract', () => {
+  it('service_unavailable returns proper refusal shape', async () => {
+    const { RemiConnector } = await import('../connector.js')
+    const connector = new RemiConnector('http://localhost:19999')
+
+    const answer = await connector.answer('测试问题')
+    assert.equal(answer.answerable, false)
+    assert.equal(answer.confidence, 'none')
+    assert.equal(answer.reason, 'service_unavailable')
+    assert.equal(answer.sources.length, 0)
+    assert.equal(answer.evidence.items.length, 0)
+    assert.equal(answer.serviceStatus, 'unavailable')
+    assert.ok(answer.question === '测试问题')
+    assert.ok(answer.generatedAt.length > 0)
+  })
+
+  it('GroundedAnswer has stable contract fields', async () => {
+    const { RemiConnector } = await import('../connector.js')
+    const connector = new RemiConnector('http://localhost:19999')
+    const answer = await connector.answer('any')
+
+    const requiredFields = [
+      'question', 'answerable', 'answer', 'confidence',
+      'reason', 'sources', 'evidence', 'serviceStatus', 'generatedAt'
+    ]
+    for (const field of requiredFields) {
+      assert.ok(field in answer, `GroundedAnswer must have field: ${field}`)
+    }
+
+    const evidenceFields = ['query', 'items', 'fromContext', 'fromSearch', 'collectedAt']
+    for (const field of evidenceFields) {
+      assert.ok(field in answer.evidence, `EvidencePack must have field: ${field}`)
+    }
+  })
+})

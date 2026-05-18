@@ -66,7 +66,7 @@ function buildFacts(event: BabyEvent): string[] {
 
 function buildSummary(event: BabyEvent): string {
   const profile = loadProfile()
-  const weeks = profile ? getGestationalWeeks(profile) : null
+  const weeks = profile ? getGestationalWeeks(profile, new Date(event.occurredAt)) : null
   const stage = profile ? getStage(profile) : '未知'
 
   let summary = event.summary || event.title
