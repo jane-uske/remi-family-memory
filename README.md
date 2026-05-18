@@ -58,6 +58,7 @@ npm run doctor            # Run data health check
 npm run connector         # Run Remi Connector verification demo
 npm run connector:degradation  # Test service-unavailable behavior
 npm run llm:smoke         # Cloud LLM smoke test (requires env vars)
+npm run llm:e2e           # End-to-end: real service + real LLM (requires env vars + service)
 npm test                  # Run automated test suite
 ```
 
@@ -853,6 +854,13 @@ remi-family-memory/
 - `npm run llm:smoke` for manual end-to-end cloud LLM validation
 - Provider scope clarified: OpenAI-compatible only
 - 48 automated tests covering all security boundaries
+
+### v0.7.2 — Partial Evidence Contract Fix ✓
+- Validator corrects `reason=no_evidence` when evidence exists and answer uses it
+- Validator attaches sourceRefs when answer references evidence content
+- Prompt contract strengthened: no_evidence only valid with empty items
+- `npm run llm:e2e` — real service + real LLM end-to-end validation
+- 53 automated tests including 5 new partial evidence validation tests
 
 ### v0.8 — Local LLM Integration
 - Replace cloud validation with local LLM (Ollama, llama.cpp)

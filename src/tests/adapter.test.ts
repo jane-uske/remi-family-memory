@@ -593,6 +593,155 @@ describe('v0.7.1: Provider error handling', () => {
   })
 })
 
+// --- v0.7.2: Partial Evidence Contract ---
+
+describe('v0.7.2: Partial evidence must not become no_evidence', () => {
+  it('validator corrects no_evidence when answer uses evidence content', async () => {
+    const { CloudAdapter } = await import('../adapters/cloud.js')
+    const adapter = new CloudAdapter({ provider: 'openai', apiKey: 'test', model: 'test' })
+
+    const input = {
+      question: '宝宝最近身体状态怎么样？',
+      evidence: {
+        query: '身体',
+        items: [{ source: 'memory' as const, memoryId: 'mem-checkup-001', sourceEventId: 'evt-001', date: '2026-05-15', title: '16周常规孕检', snippet: 'NT检查通过，各项指标正常' }],
+        fromContext: false,
+        fromSearch: true,
+        collectedAt: new Date().toISOString(),
+      },
+      promptContract: 'grounded_answer_v1',
+    }
+
+    const badOutput = {
+      answerable: false,
+      answer: '根据2026-05-15的16周常规孕检记录，NT检查通过，各项指标正常。但仅有一条记录不足以完整判断。',
+      confidence: 'none' as const,
+      reason: 'no_evidence',
+      sourceRefs: [],
+    }
+
+    const validated = adapter.validateOutput(badOutput, input)
+    assert.equal(validated.reason, 'partial_evidence', 'must correct to partial_evidence')
+    assert.equal(validated.answerable, true)
+    assert.ok(validated.sourceRefs.length > 0, 'must include sourceRefs for used evidence')
+    assert.equal(validated.sourceRefs[0].memoryId, 'mem-checkup-001')
+  })
+
+  it('validator corrects missing sourceRefs when answer references evidence', async () => {
+    const { CloudAdapter } = await import('../adapters/cloud.js')
+    const adapter = new CloudAdapter({ provider: 'openai', apiKey: 'test', model: 'test' })
+
+    const input = {
+      question: '最近孕检情况',
+      evidence: {
+        query: '孕检',
+        items: [{ source: 'memory' as const, memoryId: 'mem-001', date: '2026-05-15', title: '16周常规孕检', snippet: '各项指标正常' }],
+        fromContext: false,
+        fromSearch: true,
+        collectedAt: new Date().toISOString(),
+      },
+      promptContract: 'grounded_answer_v1',
+    }
+
+    const badOutput = {
+      answerable: false,
+      answer: '根据16周常规孕检的记录，各项指标正常。',
+      confidence: 'low' as const,
+      reason: 'partial_evidence',
+      sourceRefs: [],
+    }
+
+    const validated = adapter.validateOutput(badOutput, input)
+    assert.equal(validated.answerable, true, 'must become answerable when evidence is used')
+    assert.equal(validated.reason, 'partial_evidence')
+    assert.ok(validated.sourceRefs.length > 0, 'must attach sourceRefs from evidence')
+    assert.equal(validated.sourceRefs[0].memoryId, 'mem-001')
+  })
+
+  it('true no_evidence (empty items) is not corrected', async () => {
+    const { CloudAdapter } = await import('../adapters/cloud.js')
+    const adapter = new CloudAdapter({ provider: 'openai', apiKey: 'test', model: 'test' })
+
+    const input = {
+      question: '宝宝喜欢什么颜色？',
+      evidence: {
+        query: '颜色',
+        items: [],
+        fromContext: false,
+        fromSearch: true,
+        collectedAt: new Date().toISOString(),
+      },
+      promptContract: 'grounded_answer_v1',
+    }
+
+    const refusalOutput = {
+      answerable: false,
+      answer: '当前家庭记忆库里没有找到相关记录。',
+      confidence: 'none' as const,
+      reason: 'no_evidence',
+      sourceRefs: [],
+    }
+
+    const validated = adapter.validateOutput(refusalOutput, input)
+    assert.equal(validated.answerable, false)
+    assert.equal(validated.reason, 'no_evidence')
+    assert.equal(validated.sourceRefs.length, 0)
+  })
+
+  it('deterministic adapter returns partial_evidence with sourceRefs for broad questions', async () => {
+    const { DeterministicAdapter } = await import('../adapters/index.js')
+    const adapter = new DeterministicAdapter()
+
+    const result = await adapter.generate({
+      question: '宝宝最近身体状态怎么样？',
+      evidence: {
+        query: '身体',
+        items: [{ source: 'memory' as const, memoryId: 'mem-001', date: '2026-05-15', title: '16周常规孕检', snippet: '各项指标正常', importance: 'high' }],
+        fromContext: false,
+        fromSearch: true,
+        collectedAt: new Date().toISOString(),
+      },
+      promptContract: 'grounded_answer_v1',
+    })
+
+    assert.equal(result.reason, 'partial_evidence')
+    assert.equal(result.confidence, 'low')
+    assert.ok(result.sourceRefs.length > 0, 'partial_evidence must carry sourceRefs')
+    assert.equal(result.sourceRefs[0].memoryId, 'mem-001')
+  })
+
+  it('answer text with evidence date but empty sourceRefs gets corrected', async () => {
+    const { CloudAdapter } = await import('../adapters/cloud.js')
+    const adapter = new CloudAdapter({ provider: 'openai', apiKey: 'test', model: 'test' })
+
+    const input = {
+      question: '胎动情况',
+      evidence: {
+        query: '胎动',
+        items: [{ source: 'memory' as const, memoryId: 'mem-fetal-001', date: '2026-05-10', title: '第一次胎动', snippet: '像小鱼在游动' }],
+        fromContext: true,
+        fromSearch: false,
+        collectedAt: new Date().toISOString(),
+      },
+      promptContract: 'grounded_answer_v1',
+    }
+
+    const badOutput = {
+      answerable: false,
+      answer: '2026-05-10记录了第一次胎动，像小鱼在游动。',
+      confidence: 'none' as const,
+      reason: 'no_evidence',
+      sourceRefs: [],
+    }
+
+    const validated = adapter.validateOutput(badOutput, input)
+    assert.equal(validated.answerable, true)
+    assert.equal(validated.reason, 'partial_evidence')
+    assert.ok(validated.sourceRefs.length > 0)
+    assert.equal(validated.sourceRefs[0].memoryId, 'mem-fetal-001')
+  })
+})
+
 // Cleanup
 process.on('exit', () => {
   rmSync(TEST_DATA_DIR, { recursive: true, force: true })

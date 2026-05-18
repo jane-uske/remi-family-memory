@@ -11,13 +11,16 @@ export type CloudConfig = {
 const PROMPT_CONTRACT = `You are a family memory assistant. Answer ONLY based on the evidence provided.
 
 Rules:
-1. If evidence is empty or insufficient, set answerable=false.
-2. Every answerable=true response MUST include sourceRefs from the evidence items.
-3. sourceRefs MUST reference memoryId or sourceEventId values from the evidence.
-4. Never invent events, dates, or facts not in the evidence.
-5. Never extrapolate beyond what evidence states.
-6. Answer in Chinese (Mandarin).
-7. Be warm and caring in tone.
+1. If evidence is empty or insufficient, set answerable=false with reason="no_evidence".
+2. If evidence exists but is incomplete for the question (partial), set answerable=true, reason="partial_evidence", confidence="low" or "medium", and explain that evidence is limited.
+3. Every answerable=true response MUST include sourceRefs from the evidence items.
+4. sourceRefs MUST reference memoryId or sourceEventId values from the evidence.
+5. Never invent events, dates, or facts not in the evidence.
+6. Never extrapolate beyond what evidence states.
+7. If your answer text mentions any date, title, or content from the evidence, you MUST include matching sourceRefs. Empty sourceRefs with evidence-referencing text is a protocol violation.
+8. reason="no_evidence" is ONLY valid when evidence items array is empty. If items exist, use "evidence_found" or "partial_evidence".
+9. Answer in Chinese (Mandarin).
+10. Be warm and caring in tone.
 
 Respond with valid JSON matching this schema:
 {
@@ -239,6 +242,57 @@ export class CloudAdapter implements LLMAdapter {
       return { ...output, sourceRefs: validSources }
     }
 
+    // --- Partial evidence correction ---
+    // If evidence exists but LLM claimed no_evidence, check if answer uses evidence content
+    if (input.evidence.items.length > 0 && output.reason === 'no_evidence') {
+      const usesEvidence = this.answerUsesEvidence(output.answer, input.evidence.items)
+      if (usesEvidence.length > 0) {
+        return {
+          answerable: true,
+          answer: output.answer,
+          confidence: 'low',
+          reason: 'partial_evidence',
+          sourceRefs: usesEvidence.map((item) => ({
+            memoryId: item.memoryId,
+            sourceEventId: item.sourceEventId,
+            date: item.date,
+            title: item.title,
+          })),
+        }
+      }
+    }
+
+    // If answer text references evidence content but sourceRefs is empty
+    if (input.evidence.items.length > 0 && output.sourceRefs.length === 0) {
+      const usesEvidence = this.answerUsesEvidence(output.answer, input.evidence.items)
+      if (usesEvidence.length > 0) {
+        return {
+          answerable: true,
+          answer: output.answer,
+          confidence: output.confidence === 'none' ? 'low' : output.confidence,
+          reason: 'partial_evidence',
+          sourceRefs: usesEvidence.map((item) => ({
+            memoryId: item.memoryId,
+            sourceEventId: item.sourceEventId,
+            date: item.date,
+            title: item.title,
+          })),
+        }
+      }
+    }
+
     return output
+  }
+
+  private answerUsesEvidence(answer: string, items: LLMInput['evidence']['items']): LLMInput['evidence']['items'] {
+    return items.filter((item) => {
+      if (item.date && answer.includes(item.date)) return true
+      if (item.title && item.title.length >= 3 && answer.includes(item.title)) return true
+      if (item.snippet && item.snippet.length >= 5) {
+        const snippetHead = item.snippet.slice(0, 20)
+        if (answer.includes(snippetHead)) return true
+      }
+      return false
+    })
   }
 }

@@ -233,6 +233,12 @@ async function runSmoke() {
       if (output.answerable && output.confidence === 'high') {
         correct = false
         issue = 'Partial evidence but LLM claimed high confidence (extrapolation!)'
+      } else if (output.reason === 'no_evidence' && q.evidence.items.length > 0) {
+        correct = false
+        issue = 'Has evidence items but reason=no_evidence (protocol violation)'
+      } else if (output.answerable && output.sourceRefs.length === 0) {
+        correct = false
+        issue = 'Partial evidence: answerable=true but no sourceRefs'
       }
     }
 
