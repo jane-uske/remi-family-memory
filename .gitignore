@@ -7,5 +7,6 @@ data/exports/
 data/reports/
 data/memory/
 data/context/
+data/drafts/
 *.log
 .DS_Store
