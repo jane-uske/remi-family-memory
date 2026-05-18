@@ -955,6 +955,88 @@ describe('v0.7.3: Broad health/status guardrail', () => {
   })
 })
 
+// --- v0.8: Remi Integration Adapter ---
+
+describe('v0.8: Remi integration adapter', () => {
+  it('isFamilyMemoryQuestion detects family questions', async () => {
+    const { isFamilyMemoryQuestion } = await import('../remi-adapter.js')
+
+    assert.equal(isFamilyMemoryQuestion('宝宝第一次胎动是什么时候？'), true)
+    assert.equal(isFamilyMemoryQuestion('最近一次孕检是什么？'), true)
+    assert.equal(isFamilyMemoryQuestion('现在有哪些核心记忆？'), true)
+    assert.equal(isFamilyMemoryQuestion('宝宝喜欢什么颜色？'), true)
+    assert.equal(isFamilyMemoryQuestion('宝宝最近身体状态怎么样？'), true)
+    assert.equal(isFamilyMemoryQuestion('家庭记忆里有什么记录？'), true)
+    assert.equal(isFamilyMemoryQuestion('预产期是什么时候？'), true)
+    assert.equal(isFamilyMemoryQuestion('今天天气怎么样？'), false)
+    assert.equal(isFamilyMemoryQuestion('帮我写一首诗'), false)
+  })
+
+  it('returns handled=false when disabled', async () => {
+    const { RemiMemoryAdapter } = await import('../remi-adapter.js')
+    const adapter = new RemiMemoryAdapter({ enabled: false, serviceUrl: 'http://localhost:19999', token: null })
+
+    const result = await adapter.handleQuestion('宝宝第一次胎动？')
+    assert.equal(result.handled, false)
+    assert.equal(result.reason, 'disabled')
+  })
+
+  it('returns handled=false for non-family questions when enabled', async () => {
+    const { RemiMemoryAdapter } = await import('../remi-adapter.js')
+    const adapter = new RemiMemoryAdapter({ enabled: true, serviceUrl: 'http://localhost:19999', token: null })
+
+    const result = await adapter.handleQuestion('今天天气怎么样？')
+    assert.equal(result.handled, false)
+    assert.equal(result.reason, 'not_family_question')
+  })
+
+  it('returns service_unavailable when cannot connect', async () => {
+    const { RemiMemoryAdapter } = await import('../remi-adapter.js')
+    const adapter = new RemiMemoryAdapter({ enabled: true, serviceUrl: 'http://localhost:19999', token: null })
+
+    const result = await adapter.handleQuestion('宝宝第一次胎动是什么时候？')
+    assert.equal(result.handled, true)
+    assert.equal(result.answerable, false)
+    assert.equal(result.serviceStatus, 'unavailable')
+    assert.ok(result.answer.includes('暂不可用'))
+  })
+
+  it('does not expose owner-facing API paths', async () => {
+    const { RemiMemoryAdapter } = await import('../remi-adapter.js')
+    const adapter = new RemiMemoryAdapter({ enabled: true, serviceUrl: 'http://localhost:19999', token: null })
+
+    const result = await adapter.handleQuestion('宝宝第一次胎动？')
+    const resultStr = JSON.stringify(result)
+    assert.ok(!resultStr.includes('/api/events'), 'must not reference owner API')
+    assert.ok(!resultStr.includes('data/events'), 'must not reference raw data paths')
+  })
+
+  it('loadConfig reads env vars correctly', async () => {
+    const origEnabled = process.env.FAMILY_MEMORY_ENABLED
+    const origUrl = process.env.FAMILY_MEMORY_SERVICE_URL
+    const origToken = process.env.FAMILY_MEMORY_AI_TOKEN
+
+    process.env.FAMILY_MEMORY_ENABLED = 'true'
+    process.env.FAMILY_MEMORY_SERVICE_URL = 'http://custom:9999'
+    process.env.FAMILY_MEMORY_AI_TOKEN = 'test-token'
+
+    const { loadConfig } = await import('../remi-adapter.js')
+    const config = loadConfig()
+
+    assert.equal(config.enabled, true)
+    assert.equal(config.serviceUrl, 'http://custom:9999')
+    assert.equal(config.token, 'test-token')
+
+    // Restore
+    if (origEnabled !== undefined) process.env.FAMILY_MEMORY_ENABLED = origEnabled
+    else delete process.env.FAMILY_MEMORY_ENABLED
+    if (origUrl !== undefined) process.env.FAMILY_MEMORY_SERVICE_URL = origUrl
+    else delete process.env.FAMILY_MEMORY_SERVICE_URL
+    if (origToken !== undefined) process.env.FAMILY_MEMORY_AI_TOKEN = origToken
+    else delete process.env.FAMILY_MEMORY_AI_TOKEN
+  })
+})
+
 // Cleanup
 process.on('exit', () => {
   rmSync(TEST_DATA_DIR, { recursive: true, force: true })
