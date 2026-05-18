@@ -8,8 +8,10 @@ import { exportAll } from './export.js'
 import { buildMemories } from './memory.js'
 import { generateContext } from './context.js'
 import { runDoctor, printDoctorResults } from './doctor.js'
+import { runSync } from './sync.js'
 import { EVENT_TYPE_LABELS } from './types.js'
 import { runConnectorDemo, runDegradationDemo } from './connector-demo.js'
+import { runCaptureDemo } from './capture-demo.js'
 
 const command = process.argv[2]
 
@@ -130,12 +132,24 @@ switch (command) {
     break
   }
 
+  case 'capture-demo': {
+    await runCaptureDemo()
+    break
+  }
+
+  case 'sync': {
+    const ok = runSync()
+    if (!ok) process.exit(1)
+    break
+  }
+
   default:
     console.log(`Remi Family Memory CLI`)
     console.log()
     console.log(`Usage: tsx src/cli.ts <command>`)
     console.log()
     console.log('Commands:')
+    console.log('  sync              Scan + build-memory + context + doctor (daily workflow)')
     console.log('  scan              Scan inbox (notes + assets)')
     console.log('  scan-assets       Scan assets inbox only')
     console.log('  serve             Start the timeline web server')
@@ -148,5 +162,6 @@ switch (command) {
     console.log('  doctor            Run data health check')
     console.log('  connector         Run Remi Connector verification demo')
     console.log('  connector degradation  Test service-unavailable behavior')
+    console.log('  capture-demo      Run v0.9 capture-to-inbox smoke test')
     process.exit(1)
 }

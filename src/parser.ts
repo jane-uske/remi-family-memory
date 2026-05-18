@@ -56,6 +56,13 @@ export function parseMarkdownNote(
 
   const sensitivity = frontmatter.sensitivity || 'normal'
 
+  const isRemiCapture = frontmatter.source === 'remi'
+  const source = isRemiCapture
+    ? { kind: 'manual' as const, path: sourcePath, externalId: 'remi' }
+    : { kind: 'folder' as const, path: sourcePath }
+
+  const confirmedByParent = frontmatter.confirmedByParent === true
+
   const now = new Date().toISOString()
 
   return {
@@ -66,14 +73,11 @@ export function parseMarkdownNote(
     type,
     title,
     summary,
-    source: {
-      kind: 'folder',
-      path: sourcePath,
-    },
+    source,
     people,
     tags,
     sensitivity,
-    confirmedByParent: false,
+    confirmedByParent,
     createdAt: now,
     updatedAt: now,
   }

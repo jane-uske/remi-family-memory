@@ -11,6 +11,7 @@ import { aiSearch } from './search.js'
 import { runDoctor } from './doctor.js'
 import { SCHEMA_VERSION } from './types.js'
 import { RemiMemoryAdapter } from './remi-adapter.js'
+import { writeInboxNote, checkStageGuardrail, getCurrentStage } from './capture.js'
 import type { Request, Response, NextFunction } from 'express'
 
 function getToken(): string | null {
@@ -198,6 +199,42 @@ export function startServer(port = 3456) {
 
   app.use(express.json())
 
+  app.get('/api/ai/stage', (_req, res) => {
+    const stage = getCurrentStage()
+    res.json({ stage })
+  })
+
+  app.post('/api/ai/capture', (req, res) => {
+    const { text, date, confirmedByParent, source } = req.body || {}
+
+    if (!text || typeof text !== 'string' || !text.trim()) {
+      res.status(400).json({ ok: false, error: 'missing_text', message: '缺少必填字段: text' })
+      return
+    }
+    if (confirmedByParent !== true) {
+      res.status(400).json({ ok: false, error: 'not_confirmed', message: '必须在用户确认后才能写入记录。' })
+      return
+    }
+    if (source !== 'remi') {
+      res.status(400).json({ ok: false, error: 'invalid_source', message: 'source 字段必须为 "remi"。' })
+      return
+    }
+
+    const result = writeInboxNote({
+      text: text.trim(),
+      date: typeof date === 'string' ? date : undefined,
+      confirmedByParent: true,
+      source: 'remi',
+    })
+
+    if (!result.ok) {
+      res.status(400).json(result)
+      return
+    }
+
+    res.json(result)
+  })
+
   const askAdapter = new RemiMemoryAdapter({
     enabled: true,
     serviceUrl: `http://localhost:${port}`,
@@ -235,9 +272,11 @@ export function startServer(port = 3456) {
     console.log(`  AI API (token: ${tokenSet ? 'required' : 'open (set FAMILY_MEMORY_TOKEN to protect)'}):`)
     console.log(`    Health:      GET  /api/ai/health`)
     console.log(`    Context:     GET  /api/ai/context`)
+    console.log(`    Stage:       GET  /api/ai/stage`)
     console.log(`    Memories:    GET  /api/ai/memories`)
     console.log(`    Search:      GET  /api/ai/search?q=keyword`)
     console.log(`    Ask:         POST /api/ai/ask`)
+    console.log(`    Capture:     POST /api/ai/capture`)
     console.log(`    Rebuild:     POST /api/ai/rebuild`)
     console.log()
     console.log('  Owner API (no auth, web dashboard):')

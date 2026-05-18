@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = '0.6.0'
+export const SCHEMA_VERSION = '1.0.0'
 
 // --- Event Types ---
 

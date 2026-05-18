@@ -1,784 +1,312 @@
 # Remi Family Memory
 
-> A local-first family memory system — from archive to **AI-readable memory layer** to **Local Memory Service** to **Grounded Answer Protocol**.
+> A local-first family memory system — capture, archive, and grounded AI retrieval for your family's story.
 
 ## What This Is
 
 This is **not** a baby tracker app, photo album, or AI chatbot.
 
-This is a **local-first, private, long-term family memory operating system** that:
+This is a **local-first, private, long-term family memory system** that:
 
-- Captures life events from pregnancy onwards into a structured, versioned timeline
+- Captures life events from pregnancy onwards into a structured timeline
 - Archives media files with SHA256 integrity verification
-- **Derives AI-readable memory records** from raw events (MemoryRecord)
-- **Generates context packs** that Remi/AI can load directly
-- **Serves a local HTTP API** for Remi/AI to query family memory
-- **Enforces grounded answers** — every AI response must cite real records, never fabricate
-- Stores everything locally as files you own forever — no cloud, no database
-- Provides health checks, full-text search, and portable exports
+- Derives AI-readable memory records from raw events
+- Generates context packs that Remi/AI can load directly
+- Serves a local HTTP API for Remi to query and capture family memories
+- Enforces grounded answers — every AI response cites real records, never fabricates
+- Stores everything as local files you own forever — no cloud, no database
 
-### v0.7: Cloud LLM Adapter Validation
+## Self-Use Guide (v1.0)
 
-v0.7 introduces a pluggable **LLM Adapter** layer that validates the Grounded Answer Protocol against real cloud LLMs. The long-term goal remains local-first — cloud is used here only for protocol validation.
+### How to Start
+
+```bash
+npm install
+npm run serve   # Starts service on http://localhost:3456
+```
+
+Remi connects via environment variables:
+
+```bash
+REMI_FAMILY_MEMORY_ENABLED=1
+REMI_FAMILY_MEMORY_SERVICE_URL=http://localhost:3456
+REMI_FAMILY_MEMORY_AI_TOKEN=<optional-token>
+```
+
+### How to Record (via Remi)
+
+Tell Remi in natural language:
+
+- "帮我记一下，今天第一次感受到胎动了"
+- "记录一下，16周孕检一切正常"
+- "帮忙记，爸爸今天给宝宝念了第一本书"
+
+Remi detects the intent and extracts the content.
+
+### How to Confirm
+
+Remi shows you what it extracted and asks for confirmation:
+
+```
+好的，我将记录以下内容到家庭记忆：
+
+「今天第一次感受到胎动了」
+
+确认记录吗？（回复"确认"记录，"算了"取消）
+```
+
+Reply "确认" to save, "算了" to cancel. Confirmation expires after 5 minutes.
+
+### How to Sync
+
+After recording, run sync to process the note into the formal timeline and AI memory:
+
+```bash
+npm run sync
+```
+
+This runs 4 steps: scan inbox → build memory → generate context → health check.
+
+Capture confirmation message: "已记录到家庭记忆 inbox。运行 sync 后会进入正式时间线和 Remi 可查询记忆。"
+
+### How to Query
+
+Ask Remi about your family memories:
+
+- "宝宝第一次胎动是什么时候？"
+- "最近一次孕检结果怎样？"
+- "爸爸给宝宝写过什么？"
+
+Remi answers based on real records with source tracing. No records = "当前家庭记忆库里没有找到相关记录" (never fabricates).
+
+### How to Export
+
+```bash
+npm run export
+```
+
+Generates a complete portable archive under `data/exports/` with:
+- All events, attachments, memories, reports, context, processed notes
+- `README_export.md` with restore instructions
+
+### How to Handle Private/Blocked Content
+
+If content contains privacy markers ("不要给AI看", "私密", etc.), Remi refuses to record it:
+
+> "这条内容包含私密标记，无法通过 Remi 记录。如需保存，请通过本地管理方式手动添加为 blocked_from_ai。"
+
+To manually add private content, create a note in `data/inbox/notes/` with:
+
+```yaml
+---
+sensitivity: blocked_from_ai
+---
+```
+
+This content enters the event timeline but **never** reaches AI-facing layers (memories, context, search, or Remi).
+
+### What's Currently Not Supported
+
+- Voice / audio input
+- Photo / image recognition / OCR
+- Local LLM integration
+- NAS / Docker deployment
+- Multi-child / multi-family
+- Automatic media processing
+- Complex permission system
+
+## Commands
+
+```bash
+npm run sync              # Daily workflow: scan + build-memory + context + doctor
+npm run scan              # Scan inbox (notes + assets)
+npm run scan-assets       # Scan assets inbox only
+npm run serve             # Start local memory service (port 3456)
+npm run dev               # Scan + serve
+npm run report [YYYY-MM]  # Generate monthly report
+npm run build-memory      # Build AI memory records from events
+npm run context           # Generate Remi context pack
+npm run search -- <kw>    # Search events, memories, reports, attachments
+npm run export            # Export full portable archive
+npm run doctor            # Run data health check (13 checks)
+npm run connector         # Run Remi Connector verification
+npm run connector:degradation  # Test service-unavailable behavior
+npm run capture-demo      # Run capture-to-inbox smoke test
+npm test                  # Run automated test suite
+npm run build             # TypeScript compile
+```
+
+## Architecture
+
+```
+v0.2: Events (archive)
+v0.3: Events → Memories → Context (AI-readable)
+v0.4: Events → Memories → Context → Service (AI-queryable)
+v0.5: Events → Memories → Context → Service → Connector (AI-consumable)
+v0.6: Events → ... → Connector → Protocol (grounded, auditable)
+v0.7: Events → ... → Protocol → Adapter (pluggable LLM, cloud-validated)
+v0.9: Events → ... + Capture API (Remi writes to inbox)
+v1.0: Events → ... + Sync + Doctor v1.0 + Export (self-use hardened)
+```
+
+### Data Flow
+
+```
+                           ┌───────────────────────────┐
+                           │   Remi (conversation)     │
+                           │ "帮我记，今天第一次胎动了" │
+                           └────────────┬──────────────┘
+                                        │ POST /api/ai/capture
+                                        ▼
+data/inbox/notes/*.md ──────────────────┐
+data/inbox/assets/*   ──────────────────┤
+                                        ▼
+                               [npm run sync]
+                                        │
+                    ┌───────────────────┼───────────────────┐
+                    ▼                   ▼                   ▼
+         events/events.json    memory/memories.json  context/remi-context.*
+         (Layer 1: truth)      (Layer 2: AI cards)   (Layer 3: AI context)
+                                        │
+                                        ▼
+                               [npm run serve]
+                                        │
+                    ┌───────────────────┼───────────────────┐
+                    ▼                   ▼                   ▼
+           /api/ai/context     /api/ai/search      /api/ai/answer
+                    │                   │                   │
+                    └───────────────────┼───────────────────┘
+                                        ▼
+                               ┌────────────────┐
+                               │  Remi answers  │
+                               │  with sources  │
+                               └────────────────┘
+```
+
+### Capture Flow (v0.9+)
+
+```
+User: "帮我记，今天第一次胎动了"
+  → Remi detects record intent
+  → Privacy check (block if "私密" etc.)
+  → Stage guardrail (warn if post-birth milestone during pregnancy)
+  → Show extracted content, ask confirmation
+  → User: "确认"
+  → POST /api/ai/capture → data/inbox/notes/2026-05-18-remi-xxx.md
+  → User runs: npm run sync
+  → Note → Event → Memory → Context (available to Remi queries)
+```
+
+### Lifecycle States
+
+```
+captured_to_inbox → pending_ingestion → ingested_to_event → available_to_memory
+```
+
+## Data Layers
 
 | Layer | Purpose | Format |
 |-------|---------|--------|
 | **Events** | Raw structured records (source of truth) | `BabyEvent` JSON |
 | **Memories** | AI-derived cards with importance, facts, summaries | `MemoryRecord` JSON |
 | **Context** | Pre-built pack for Remi/AI to load | Markdown + JSON |
-| **Service** | HTTP API for reading, searching, rebuilding memory | REST JSON |
-| **Connector** | Remi integration client with source tracing + degradation | TypeScript module |
+| **Service** | HTTP API for reading, searching, capturing | REST JSON |
+| **Connector** | Remi integration with source tracing + degradation | TypeScript module |
 | **Protocol** | Grounded Answer rules: evidence required, refusal on no data | `GroundedAnswer` |
-| **Adapter** | Pluggable LLM backend: deterministic (default) / cloud / local (future) | `LLMAdapter` |
-
-**Architecture evolution:**
-
-```
-v0.2: Events (archive)
-v0.3: Events → Memories → Context (AI-readable)
-v0.4: Events → Memories → Context → Service (AI-queryable)
-v0.5: Events → Memories → Context → Service → Connector (AI-consumable, verified)
-v0.6: Events → Memories → Context → Service → Connector → Protocol (grounded, auditable)
-v0.7: Events → ... → Protocol → Adapter (pluggable LLM, cloud-validated)
-```
-
-## Commands
-
-```bash
-npm run scan              # Scan inbox (notes + assets)
-npm run scan-assets       # Scan assets inbox only
-npm run report [YYYY-MM]  # Generate monthly report
-npm run build-memory      # Build AI memory records from events
-npm run context           # Generate Remi context pack
-npm run search -- <kw>    # Search events, memories, reports, attachments
-npm run serve             # Start local memory service (API + web)
-npm run dev               # Scan + serve
-npm run export            # Export full portable archive
-npm run doctor            # Run data health check
-npm run connector         # Run Remi Connector verification demo
-npm run connector:degradation  # Test service-unavailable behavior
-npm run llm:smoke         # Cloud LLM smoke test (requires env vars)
-npm run llm:e2e           # End-to-end: real service + real LLM (requires env vars + service)
-npm test                  # Run automated test suite
-```
-
-## Quick Start
-
-```bash
-npm install
-
-# 1. Add notes to inbox
-echo '---
-date: 2026-05-15
-type: pregnancy_checkup
-people: [妈妈, 爸爸]
-tags: [孕检, 16周]
----
-# 16周孕检
-一切正常。' > data/inbox/notes/checkup.md
-
-# 2. Drop media into assets inbox
-cp ultrasound.jpg data/inbox/assets/
-
-# 3. Process everything
-npm run scan
-
-# 4. Build AI memory layer
-npm run build-memory
-npm run context
-
-# 5. Start local memory service
-npm run serve
-
-# 6. Run Remi Connector verification
-npm run connector
-
-# 7. Check system health
-npm run doctor
-```
-
-## Remi Connector
-
-### What It Does
-
-The Remi Connector (`src/connector.ts`) is the verified integration layer between Remi/AI and the family memory service. It provides:
-
-1. **Context loading** — Remi loads the full family memory context on startup
-2. **On-demand search** — Remi queries specific memories when users ask questions
-3. **Source-traced answers** — Every answer includes `memoryId`, `sourceEventId`, or `date` for traceability
-4. **Privacy enforcement** — `blocked_from_ai` content never reaches Remi
-5. **Graceful degradation** — When the service is down, Remi reports unavailability without fabricating
-
-### How Remi Uses the Connector
-
-```typescript
-import { RemiConnector } from './connector.js'
-
-const connector = new RemiConnector('http://localhost:3456')
-
-// 1. Connect and check health
-const { ok } = await connector.connect()
-if (!ok) {
-  // Degradation: don't answer family questions
-}
-
-// 2. Load context (startup)
-const ctx = await connector.loadContext()
-// ctx.context contains: profile, coreMemories, highMemories, recentEvents
-
-// 3. Answer user questions (on demand)
-const answer = await connector.answer('宝宝第一次胎动是什么时候？')
-// answer.answer: "根据家庭记忆记录：2026-05-10，..."
-// answer.sources: [{ memoryId, date, title }]
-// answer.confident: true
-// answer.serviceStatus: 'connected'
-```
-
-### Answer Format
-
-Every connector answer includes:
-
-```typescript
-{
-  question: string       // The user's question
-  answer: string         // Answer based on real records (never fabricated)
-  sources: [{            // Traceable sources
-    type: 'memory' | 'event' | 'context' | 'search'
-    memoryId?: string
-    sourceEventId?: string
-    date?: string
-    title?: string
-  }]
-  confident: boolean     // false = no matching records found
-  serviceStatus: 'connected' | 'degraded' | 'unavailable'
-}
-```
-
-### Degradation Behavior
-
-When the family-memory service is unavailable:
-
-| Situation | Behavior |
-|-----------|----------|
-| Service unreachable | `serviceStatus: 'unavailable'`, `confident: false` |
-| Answer attempt | Returns "家庭记忆服务暂不可用" — never fabricates |
-| Search attempt | Returns `ok: false` with clear error message |
-| Context load attempt | Returns `ok: false`, no stale data used |
-
-### Privacy Protection
-
-The connector inherits all privacy layers:
-
-1. **Memory layer**: `blocked_from_ai` events are never converted to MemoryRecords
-2. **Context layer**: Context pack only includes memories (never raw blocked events)
-3. **Search API**: Filters blocked events from search results
-4. **Connector**: Only consumes API data — cannot access raw files
-
-### Running the Verification
-
-```bash
-# Start the service first
-npm run serve
-
-# In another terminal — run full verification
-npm run connector
-
-# Test degradation (no service needed)
-npm run connector:degradation
-```
-
-### Current Limitations (v0.7)
-
-- Cloud LLM is for **protocol validation only** — production goal is local-first
-- Deterministic adapter uses keyword matching, not semantic understanding
-- Cloud adapter requires env vars; without them, system falls back to deterministic
-- Local LLM adapter reserved for future implementation
-- This is a **validation layer**, not a production Remi plugin yet
-
-## LLM Adapter Layer (v0.7)
-
-### Architecture
-
-The adapter layer decouples answer generation from the protocol enforcement:
-
-```
-┌──────────────────────────────────────┐
-│         RemiConnector                │
-│   collect evidence → toAdapterEvidence │
-└───────────────┬──────────────────────┘
-                │ LLMInput
-                ▼
-┌──────────────────────────────────────┐
-│         LLMAdapter (interface)       │
-│   generate(input) → LLMOutput        │
-├──────────┬───────────┬───────────────┤
-│Deterministic│  Cloud   │   Local      │
-│ (default)   │(validate)│  (future)    │
-└──────────┴───────────┴───────────────┘
-```
-
-### Adapter Types
-
-| Type | Purpose | When Used |
-|------|---------|-----------|
-| `deterministic` | Template-based, no external calls | Default (no env vars) |
-| `cloud` | Real LLM via OpenAI-compatible API | When env vars configured |
-| `local` | Local LLM (reserved) | Not yet implemented |
-
-### Configuration (Environment Variables)
-
-```bash
-# Enable cloud adapter (all 3 required):
-FAMILY_MEMORY_LLM_PROVIDER=openai     # See provider support below
-FAMILY_MEMORY_LLM_API_KEY=sk-...      # API key (NEVER commit to repo)
-FAMILY_MEMORY_LLM_MODEL=gpt-4o-mini   # Model name
-
-# Optional:
-FAMILY_MEMORY_LLM_BASE_URL=https://...  # Custom endpoint (OpenAI-compatible)
-```
-
-Without these env vars, the system uses the deterministic adapter with zero external dependencies.
-
-### Provider Support (v0.7.1)
-
-| Provider | Status | Protocol |
-|----------|--------|----------|
-| OpenAI | Supported | `/v1/chat/completions` |
-| OpenAI-compatible (Azure, vLLM, Groq, etc.) | Supported via `BASE_URL` | Same protocol |
-| Anthropic | **Not supported** | Different request/response format |
-| Other providers | **Not supported** | Requires adapter implementation |
-
-**Important:** Setting `FAMILY_MEMORY_LLM_PROVIDER=anthropic` will attempt to call the Anthropic endpoint but uses the OpenAI chat completions request format, which will fail. Do NOT use `anthropic` as provider unless a dedicated format adapter is implemented in a future version.
-
-### Smoke Testing (v0.7.1)
-
-Manual validation against a real cloud LLM:
-
-```bash
-FAMILY_MEMORY_LLM_PROVIDER=openai \
-FAMILY_MEMORY_LLM_API_KEY=sk-... \
-FAMILY_MEMORY_LLM_MODEL=gpt-4o-mini \
-npm run llm:smoke
-```
-
-This runs 6 predefined questions (3 answerable, 2 unanswerable, 1 partial) and reports:
-- Whether the LLM respects evidence boundaries
-- Whether sources trace back to provided evidence
-- Whether refusal works for empty evidence
-- Whether output validation catches violations
-- Payload audit safety metrics
-
-Without env vars configured, `npm run llm:smoke` exits cleanly with code 0.
-
-### What the Cloud Adapter Sends
-
-The adapter receives a sanitized `EvidencePayload` containing ONLY:
-
-```typescript
-{
-  question: string                    // User's question
-  evidence: {
-    query: string                     // Search query used
-    items: [{
-      source: 'memory' | 'event' | 'context' | 'search'
-      memoryId?: string
-      date?: string
-      title?: string
-      snippet: string                 // Brief text excerpt
-      importance?: 'core' | 'high' | 'medium' | 'low'
-    }]
-    fromContext: boolean
-    fromSearch: boolean
-  }
-  promptContract: 'grounded_answer_v1'
-}
-```
-
-### What is NEVER Sent
-
-- `blocked_from_ai` events or content
-- Raw event objects
-- File paths (`data/events/`, `data/inbox/`, etc.)
-- Attachment file data
-- Full report text
-- Owner-facing API data (`/api/events`)
-- Any content from report-type search results
-
-### Output Validation
-
-The cloud adapter validates every LLM response before returning:
-
-1. **No sources → reject**: If `answerable=true` but `sourceRefs` is empty → force refusal
-2. **Phantom sources → reject**: If any sourceRef doesn't match evidence items → force refusal
-3. **Source filtering**: Only sourceRefs matching real evidence memoryIds/eventIds pass through
-
-### Fallback Strategy
-
-```
-Cloud adapter called
-  → Payload audit (security check)
-  → Call cloud LLM
-  │
-  ├─ LLM call fails (network, auth, timeout) → fall back to DeterministicAdapter
-  ├─ LLM output invalid (no JSON, bad schema) → fall back to DeterministicAdapter
-  └─ LLM output valid → validate sources → return validated output
-```
-
-The system ALWAYS produces an answer — cloud failure is graceful, never a hard error.
-
-## Grounded Answer Protocol (v0.6)
-
-### What It Solves
-
-When AI answers questions about family memories, it must **never fabricate**. The Grounded Answer Protocol enforces:
-
-1. **Evidence required** — No answer without real data backing it
-2. **Refusal on no data** — "I don't know" when records don't exist
-3. **Partial confidence** — When evidence is incomplete, say so explicitly
-4. **Source tracing** — Every fact traces to memoryId / sourceEventId
-5. **Privacy enforcement** — blocked_from_ai never enters evidence
-6. **Graceful degradation** — Service down = explicit refusal, not hallucination
-
-### GroundedAnswer Structure
-
-```typescript
-{
-  question: string          // What was asked
-  answerable: boolean       // true only when evidence exists
-  answer: string            // Based on evidence, or refusal message
-  confidence: Confidence    // 'high' | 'medium' | 'low' | 'none'
-  reason: string            // 'evidence_found' | 'no_evidence' | 'partial_evidence' | 'service_unavailable'
-  sources: [{               // Traceable references
-    memoryId?: string
-    sourceEventId?: string
-    date?: string
-    title?: string
-    path?: string
-  }]
-  evidence: EvidencePack    // All evidence considered
-  serviceStatus: ConnectorStatus
-  generatedAt: string
-}
-```
-
-### EvidencePack Structure
-
-```typescript
-{
-  query: string             // Original question
-  items: [{                 // Evidence items collected
-    source: 'memory' | 'event' | 'context' | 'search' | 'report'
-    memoryId?: string
-    sourceEventId?: string
-    date?: string
-    title?: string
-    path?: string
-    snippet: string         // Relevant text excerpt
-    importance?: MemoryImportance
-  }]
-  fromContext: boolean      // Was context pack consulted?
-  fromSearch: boolean       // Was search API used?
-  collectedAt: string
-}
-```
-
-### Answer Decision Logic
-
-```
-Question received
-  → Collect evidence (context + search)
-  → Filter for relevance
-  │
-  ├─ 0 items + broad question → partial_evidence (confidence=low)
-  ├─ 0 items + specific question → no_evidence (answerable=false)
-  ├─ Items found + broad question → partial_evidence (confidence=low)
-  └─ Items found + specific question → evidence_found (confidence=high/medium)
-```
-
-### Refusal Examples
-
-| Question | Response | Reason |
-|----------|----------|--------|
-| 宝宝出生当天发生了什么？ | 当前家庭记忆库里没有找到相关记录 | no_evidence |
-| 宝宝第一次说话是什么时候？ | 当前家庭记忆库里没有找到相关记录 | no_evidence |
-| 宝宝喜欢什么颜色？ | 当前家庭记忆库里没有找到相关记录 | no_evidence |
-
-### Partial Evidence Examples
-
-| Question | Response | Reason |
-|----------|----------|--------|
-| 宝宝最近身体状态怎么样？ | 目前只找到 N 条相关记录...不能据此完整回答 | partial_evidence |
-
-## Prompt Contract (Future LLM Integration)
-
-This section defines the rules that any LLM integration **must** follow when answering family memory questions. This is the contract between family-memory and Remi.
-
-### Rules
-
-1. **Evidence-only answers**: LLM may ONLY generate answers based on the provided evidence pack. No knowledge from training data about this family.
-
-2. **Mandatory refusal**: If evidence pack is empty, LLM MUST respond with a refusal. No guessing, no "based on typical families..." responses.
-
-3. **Source citation**: Every factual claim in the answer MUST reference at least one source from the evidence pack (memoryId or sourceEventId).
-
-4. **No extrapolation**: LLM may NOT extend a single record into a broad conclusion. "16周孕检正常" does NOT mean "宝宝一直很健康".
-
-5. **Confidence honesty**: If evidence is partial or indirect, the answer MUST say so. Use phrases like "根据目前仅有的记录..." or "只找到一条相关记录...".
-
-6. **Privacy boundary**: LLM never sees `blocked_from_ai` content. This is enforced at the service layer, not the prompt layer.
-
-7. **Degradation protocol**: If service is unavailable, LLM MUST respond "家庭记忆服务暂不可用" — not attempt to answer from cached/stale data.
-
-8. **No creative additions**: LLM may NOT add emotional flourishes, predictions, or advice that aren't grounded in evidence. "爸爸一定很开心" is only valid if a record says so.
-
-9. **Temporal accuracy**: LLM must respect dates in evidence. Do NOT conflate "2026-05-10 first fetal movement" with "baby is very active" (a general claim).
-
-10. **Audit trail**: The GroundedAnswer structure is the audit trail. Any answer that passes `answerable=true` without sources is a protocol violation.
-
-### Prompt Template (Reference)
-
-When integrating with a real LLM, the prompt should follow this structure:
-
-```
-你是 Remi，一个家庭记忆助手。
-
-## 规则
-- 你只能基于下面的 evidence pack 回答家庭相关问题
-- 如果 evidence pack 为空，你必须说"没有找到相关记录"
-- 每个事实都必须引用来源（memoryId 或日期）
-- 不要编造、不要猜测、不要外推
-- 如果证据不足以完整回答，明确说明
-
-## Evidence Pack
-{evidence_pack_json}
-
-## 用户问题
-{question}
-
-## 回答要求
-- 基于证据回答
-- 引用来源
-- 不确定时明确说明
-```
-
-### Verification
-
-Run `npm run connector` to verify the protocol is enforced:
-
-```
-✓ 4/4 answerable questions with sources
-✓ 4/4 refusal questions correctly refused
-✓ 1/1 partial evidence correctly marked
-✓ Privacy: blocked_from_ai clean
-✓ Source tracing enforced
-✓ Overall: ALL PASS
-```
-
-## Local Memory Service API
-
-When the service is running (`npm run serve`), the following APIs are available at `http://localhost:3456`:
-
-### Health Check
-
-```
-GET /api/health
-```
-
-Returns system health status. Use this to verify the service is running and data is intact.
-
-```json
-{
-  "ok": true,
-  "schemaVersion": "0.6.0",
-  "service": "family-memory",
-  "checks": {
-    "events": "PASS",
-    "profile": "PASS",
-    "memories": "PASS",
-    "context": "PASS",
-    "archive": "PASS"
-  },
-  "updatedAt": "2026-05-18T00:00:00.000Z"
-}
-```
-
-### Baby Profile
-
-```
-GET /api/profile
-```
-
-Returns current baby profile with gestational info and last event.
-
-### Events
-
-```
-GET /api/events
-```
-
-Returns all events (chronological). Used by the timeline web UI.
-
-### Memory Records (AI-facing)
-
-```
-GET /api/memories
-GET /api/memories?importance=core
-```
-
-Returns AI-readable memory records. Optionally filter by importance level (`core`, `high`, `medium`, `low`).
-
-```json
-{
-  "schemaVersion": "0.5.0",
-  "total": 3,
-  "memories": [...]
-}
-```
-
-Privacy: memories are never generated from `blocked_from_ai` events.
-
-### Remi Context Pack (AI-facing)
-
-```
-GET /api/context
-GET /api/context?format=markdown
-```
-
-Returns the pre-built Remi context pack. Default format is JSON; pass `?format=markdown` for the markdown version.
-
-This is the **primary integration point for Remi** — a single request loads the complete family memory context.
-
-### Search
-
-```
-GET /api/search?q=胎动
-```
-
-Full-text search across events, memories, reports, and attachments. Returns matched results with context snippets.
-
-```json
-{
-  "query": "胎动",
-  "total": 2,
-  "results": [
-    { "type": "event", "date": "2026-05-10", "title": "第一次感受到胎动", ... },
-    { "type": "memory", "date": "2026-05-10", "title": "第一次感受到胎动", ... }
-  ]
-}
-```
-
-Privacy: `blocked_from_ai` events are filtered from search results.
-
-### Stats
-
-```
-GET /api/stats
-```
-
-Returns event counts by type, attachment counts.
-
-### Attachments
-
-```
-GET /api/attachments
-```
-
-Returns attachment registry.
-
-### Rebuild (Write operation)
-
-```
-POST /api/rebuild
-```
-
-Triggers a full rebuild of memory records and context pack from current events. This is the **only write operation** — all other APIs are read-only.
-
-```json
-{
-  "ok": true,
-  "memory": { "total": 3, "created": 0, "updated": 3 },
-  "context": { "mdPath": "data/context/remi-context.md", "jsonPath": "data/context/remi-context.json" },
-  "rebuiltAt": "2026-05-18T00:00:00.000Z"
-}
-```
-
-## How Remi Should Integrate (Full Flow)
-
-```
-Remi starts a conversation
-  → connector.connect()           // Check health
-  → connector.loadContext()       // Load family memory into prompt
-  → User asks about 胎动
-  → connector.answer("...")       // Search + answer with sources
-  → Remi returns answer with source references
-  → If service unavailable → "家庭记忆服务暂不可用"
-```
-
-### Integration Flow Diagram
-
-```
-┌──────────────────────────────────┐
-│           Remi / AI              │
-│  (future: Remi main project)    │
-└─────────────┬────────────────────┘
-              │ uses
-              ▼
-┌──────────────────────────────────┐
-│       RemiConnector (v0.5+)      │
-│  connect → loadContext → answer  │
-│  source tracing + degradation    │
-└─────────────┬────────────────────┘
-              │ delegates to
-              ▼
-┌──────────────────────────────────┐
-│      LLM Adapter (v0.7)          │
-│  deterministic | cloud | local   │
-│  payload safety + output valid.  │
-└─────────────┬────────────────────┘
-              │ reads (via service)
-              ▼
-┌──────────────────────────────────┐
-│   Local Memory Service (v0.4)    │
-│   /api/ai/health  /api/ai/context│
-│   /api/ai/memories /api/ai/search│
-│   /api/ai/rebuild                │
-└─────────────┬────────────────────┘
-              │ reads
-              ▼
-┌──────────────────────────────────┐
-│     Three-Layer Memory (v0.3)    │
-│  Events → Memories → Context     │
-│  (blocked_from_ai filtered)      │
-└──────────────────────────────────┘
-```
-
-## Data Flow
-
-```
-data/inbox/notes/*.md ──────────────────┐
-data/inbox/assets/*   ──────────────────┤
-                                        ▼
-                               [Scanner + Parser]
-                                        │
-                                        ▼
-              data/events/events.json        ←── Layer 1: Events (source of truth)
-              data/events/attachments.json   ←── Attachment registry
-              data/archive/assets/           ←── Archived media
-                                        │
-                                        ▼ (npm run build-memory)
-              data/memory/memories.json      ←── Layer 2: AI Memory Records
-                                        │
-                                        ▼ (npm run context)
-              data/context/remi-context.md   ←── Layer 3: Remi Context Pack
-              data/context/remi-context.json
-                                        │
-                                        ▼ (npm run serve)
-              http://localhost:3456/api/*    ←── Layer 4: Local Memory Service
-                                        │
-                                        ▼ (npm run connector)
-              RemiConnector                 ←── Layer 5: Remi Integration
-                                        │
-                    ┌───────────────┬────┴────┬──────────────┐
-                    ▼               ▼         ▼              ▼
-             Web Timeline    Profile    Monthly Report    Remi / AI
-              (/)        (/profile)  (npm run report)  (connector.answer)
-```
-
-## Data Models
-
-### BabyEvent — What Happened (Layer 1)
-
-The raw structured event. Source of truth for everything.
-
-```typescript
-{
-  id, childId, schemaVersion,
-  occurredAt, type, title, summary,
-  source: { kind, path },
-  attachmentIds,
-  people, tags, sensitivity,
-  confirmedByParent,
-  createdAt, updatedAt
-}
-```
-
-### MemoryRecord — What AI Knows (Layer 2)
-
-Derived from BabyEvent. Enriched with importance, facts, context.
-
-```typescript
-{
-  memoryId, sourceEventId, schemaVersion,
-  date, type, importance,    // 'core' | 'high' | 'medium' | 'low'
-  subjectIds, people,
-  title, summary,
-  facts: string[],           // Structured factual claims
-  emotions?: string[],
-  tags,
-  attachmentIds,
-  sourceRefs: [{ eventId, path }],
-  createdAt, updatedAt
-}
-```
-
-### Importance Levels
-
-| Level | Event Types | Meaning |
-|-------|------------|---------|
-| `core` | fetal_movement, milestone, birth | Defining life moments |
-| `high` | pregnancy_checkup, medical_record, vaccine | Health & development |
-| `medium` | parent_note, photo_memory, family_event, voice_memory, growth_metric | Daily life & emotions |
-| `low` | system_event | System-generated |
-
-### ConnectorAnswer — What Remi Returns (Layer 5)
-
-```typescript
-{
-  question: string
-  answer: string              // Based on real records, never fabricated
-  sources: AnswerSource[]     // Traceable: memoryId, sourceEventId, date
-  confident: boolean          // false when no records found or service down
-  serviceStatus: ConnectorStatus  // 'connected' | 'degraded' | 'unavailable'
-}
-```
 
 ## Privacy & Security
 
-- **blocked_from_ai**: Events marked with this sensitivity are:
+- **blocked_from_ai**: Events with this sensitivity are:
   - Never converted to MemoryRecords
   - Never included in Context Packs
-  - Filtered from `/api/search` results
+  - Filtered from search results
   - Not accessible via AI-facing APIs
-  - Cannot appear in connector answers (verified in demo)
+  - Cannot be captured through Remi (privacy detection at intent time)
 - **medical**: Included in memory but marked for careful handling
 - **family_private**: Available to family but not for external sharing
 - **normal**: Fully accessible
 
-## Why Five Layers?
+## Local Memory Service API
 
-1. **Events are permanent** — raw data never changes meaning
-2. **Memories are interpretive** — can be rebuilt, re-prioritized, enriched as AI improves
-3. **Context is ephemeral** — regenerated on demand, shaped by what's relevant now
-4. **Service is the interface** — stable contract for AI consumers, decoupled from internals
-5. **Connector is the consumer** — proves the contract works end-to-end with source tracing
+Service runs on `http://localhost:3456`.
 
-This separation means:
-- You can rebuild memories without losing data
-- AI improvements don't require data migration
-- Context can be customized for different AI consumers
-- Remi integrates without knowing file paths or data formats
-- The service API is stable even as internals evolve
-- Connector verification proves the chain works before production integration
+### AI-Facing Endpoints (token-protected)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/ai/health` | GET | AI health check |
+| `/api/ai/context` | GET | Remi context pack (JSON or markdown) |
+| `/api/ai/memories` | GET | Memory records (filterable by importance) |
+| `/api/ai/search?q=` | GET | Search memories and events |
+| `/api/ai/answer` | POST | Grounded answer with sources |
+| `/api/ai/capture` | POST | Capture note to inbox (requires confirmation) |
+| `/api/ai/stage` | GET | Current baby stage (孕期/已出生) |
+| `/api/ai/rebuild` | POST | Rebuild memory + context |
+
+### Owner-Facing Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/health` | GET | System health |
+| `/api/profile` | GET | Baby profile |
+| `/api/events` | GET | All events (timeline) |
+| `/api/search?q=` | GET | Full-text search |
+| `/api/stats` | GET | Event/attachment counts |
+| `/api/attachments` | GET | Attachment registry |
+
+### Capture API
+
+```
+POST /api/ai/capture
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "text": "今天宝宝第一次翻身了",
+  "date": "2026-05-18",
+  "confirmedByParent": true,
+  "source": "remi"
+}
+
+Success: { "ok": true, "noteId": "...", "lifecycle": "captured_to_inbox" }
+Privacy: { "ok": false, "error": "privacy_blocked" }
+Stage:   { "ok": false, "error": "stage_guardrail", "message": "..." }
+```
+
+## Doctor Health Check (v1.0)
+
+13 automated checks:
+
+```
+  Remi Family Memory — Health Check (v1.0)
+  ==========================================
+
+  [PASS] Event store         — N events loaded
+  [PASS] Baby profile        — nickname (parents: N)
+  [PASS] Attachment integrity — N/N SHA256 verified
+  [PASS] Archive assets      — All N assets present
+  [PASS] Memory records      — N memories for N events
+  [PASS] Reports directory   — Exists
+  [PASS] Context pack        — Up to date
+  [PASS] Orphan attachments  — None
+  [PASS] Orphan memories     — All memories have valid source events
+  [PASS] Inbox pending       — No pending notes
+  [PASS] Processed notes     — N note(s) in processed archive
+  [PASS] Privacy boundary    — blocked_from_ai never enters AI-safe layer
+  [PASS] Export directory    — Writable
+
+  Summary: 13 PASS, 0 WARN, 0 FAIL
+```
 
 ## Directory Structure
 
 ```
 remi-family-memory/
 ├── src/
-│   ├── types.ts           # All type definitions + SCHEMA_VERSION
-│   ├── paths.ts           # Central data directory resolver (test isolation)
+│   ├── types.ts           # Type definitions + SCHEMA_VERSION
+│   ├── paths.ts           # Data directory resolver
 │   ├── parser.ts          # Markdown → BabyEvent
-│   ├── store.ts           # Event store
+│   ├── store.ts           # Event store (read/write)
 │   ├── scanner.ts         # Notes inbox scanner
 │   ├── attachments.ts     # Assets scanner + registry
 │   ├── profile.ts         # Baby profile + gestational age
@@ -787,111 +315,65 @@ remi-family-memory/
 │   ├── report.ts          # Monthly report generator
 │   ├── search.ts          # Full-text search
 │   ├── export.ts          # Full archive export
-│   ├── doctor.ts          # Data health check
-│   ├── server.ts          # Local Memory Service (Express API + static)
-│   ├── connector.ts       # Remi Connector client (v0.5+)
-│   ├── connector-demo.ts  # Connector verification demo
-│   ├── adapters/          # LLM Adapter layer (v0.7)
-│   │   ├── types.ts       # LLMAdapter interface, LLMInput/Output types
-│   │   ├── index.ts       # Adapter factory + env detection
-│   │   ├── deterministic.ts  # Template-based adapter (default)
-│   │   └── cloud.ts       # Cloud LLM adapter with validation
-│   ├── tests/
-│   │   ├── privacy.test.ts   # Privacy & protocol invariant tests
-│   │   └── adapter.test.ts   # Adapter selection, safety, validation tests
+│   ├── doctor.ts          # Data health check (13 checks)
+│   ├── capture.ts         # Capture API (intent/privacy/write)
+│   ├── sync.ts            # Sync pipeline (scan→memory→context→doctor)
+│   ├── server.ts          # Local Memory Service (Express)
+│   ├── connector.ts       # Remi Connector client
+│   ├── connector-demo.ts  # Connector verification
+│   ├── capture-demo.ts    # Capture smoke test
+│   ├── adapters/          # LLM Adapter layer
+│   ├── tests/             # Automated tests
 │   └── cli.ts             # CLI entry point
-├── web/
-│   ├── index.html         # Timeline dashboard
-│   └── profile.html       # Growth profile page
+├── web/                   # Timeline dashboard
 ├── data/
-│   ├── inbox/notes/       # Drop zone: markdown
-│   ├── inbox/assets/      # Drop zone: media
+│   ├── inbox/notes/       # Drop zone: markdown notes
+│   ├── inbox/assets/      # Drop zone: media files
 │   ├── events/            # Layer 1: events + attachments
 │   ├── memory/            # Layer 2: AI memory records
 │   ├── context/           # Layer 3: Remi context pack
-│   ├── archive/assets/    # Archived media (SHA256)
+│   ├── archive/assets/    # Archived media (SHA256 verified)
 │   ├── profile/           # Baby profile
-│   ├── processed/         # Processed inbox files
+│   ├── processed/notes/   # Processed inbox files
 │   ├── reports/           # Monthly reports
 │   └── exports/           # Portable exports
+├── docs/                  # Technical docs
 ├── package.json
 ├── tsconfig.json
 └── README.md
 ```
 
-## Doctor Output
+## Design Principles
 
-```
-  Remi Family Memory — Health Check
-  ==================================
-
-  [PASS] Event store         — 3 events loaded
-  [PASS] Baby profile        — 吴小宝
-  [PASS] Attachment integrity — 1/1 SHA256 verified
-  [PASS] Archive assets      — All 1 assets present
-  [PASS] Memory records      — 3 memories for 3 events
-  [PASS] Reports directory   — Exists
-  [PASS] Context pack        — remi-context.md + .json present
-  [PASS] Orphan attachments  — None
-  [PASS] Orphan memories     — All memories have valid source events
-
-  Summary: 9 PASS, 0 WARN, 0 FAIL
-```
+1. **Local-first**: All data is files you own. No cloud, no database.
+2. **Grounded answers**: Every AI response cites real records. Never fabricate.
+3. **Privacy by default**: Sensitivity levels, `blocked_from_ai` boundary enforced at every layer.
+4. **Schema-versioned**: Forward-compatible. Old data always readable.
+5. **Long-term**: Built for 18+ years. Plain files, standard formats.
+6. **Rebuildable**: Memories and context can always be regenerated from events.
+7. **Fail-safe**: No evidence = refuse. Service down = refuse.
+8. **Source-traced**: Every confident answer traces back to a real record.
 
 ## Roadmap
 
-### v0.7 — Cloud LLM Adapter Validation ✓
-- Pluggable LLM adapter layer (deterministic / cloud / local)
-- Cloud adapter validates Grounded Answer Protocol against real LLMs
-- Payload security: only EvidencePack sent, never raw events or blocked content
-- Output validation: reject phantom sources, require evidence backing
-- Fallback to deterministic on cloud failure
-- API key via env vars only (never committed)
+### Done
 
-### v0.7.1 — Cloud LLM Smoke Validation ✓
-- Real content scanning in auditPayload (blocked/paths/reports/API refs)
-- Safety gate: unsafe payload blocks cloud call, falls back to deterministic
-- `npm run llm:smoke` for manual end-to-end cloud LLM validation
-- Provider scope clarified: OpenAI-compatible only
-- 48 automated tests covering all security boundaries
+- v0.2: Event archive (structured BabyEvent)
+- v0.3: Three-layer memory (Events → Memories → Context)
+- v0.4: Local Memory Service (REST API)
+- v0.5: Remi Connector (source tracing + degradation)
+- v0.6: Grounded Answer Protocol (evidence required, refusal on no data)
+- v0.7: LLM Adapter (deterministic + cloud validation)
+- v0.9: Capture API (Remi writes to inbox with confirmation)
+- v0.9.2: Capture Safety (stage guardrail, lifecycle metadata)
+- v0.9.3: Real Conversation Acceptance (8 scenarios verified)
+- v1.0: Self-use Hardening (sync, doctor v1.0, export, README)
 
-### v0.7.2 — Partial Evidence Contract Fix ✓
-- Validator corrects `reason=no_evidence` when evidence exists and answer uses it
-- Validator attaches sourceRefs when answer references evidence content
-- Prompt contract strengthened: no_evidence only valid with empty items
-- `npm run llm:e2e` — real service + real LLM end-to-end validation
-- 53 automated tests including 5 new partial evidence validation tests
+### Future
 
-### v0.8 — Local LLM Integration
-- Replace cloud validation with local LLM (Ollama, llama.cpp)
-- True local-first: no network calls by default
-- Same adapter interface, same protocol guarantees
-
-### v0.9 — Media Intelligence
+- Local LLM integration (Ollama, llama.cpp — true local-first AI)
 - Photo EXIF extraction
 - Voice memo transcription
-- Document OCR
-- Auto-event creation from media metadata
-
-### v1.0 — Production
-- Docker/NAS deployment
-- Multi-child & family member permissions
-- External integrations (Immich, Paperless-ngx, Baby Buddy)
-- Long-term timeline visualization
-- PDF/static-site export
-
-## Design Principles
-
-1. **Local-first**: All data is files you own. No cloud.
-2. **Grounded answers**: Every AI response must cite real records. Never fabricate.
-3. **Privacy by default**: Sensitivity levels, `blocked_from_ai` flag, filtered evidence packs.
-4. **Schema-versioned**: Forward-compatible. Old data always readable.
-5. **AI-ready today**: Connector + Protocol verified end-to-end.
-6. **Long-term**: Built for 18+ years. Plain files, standard formats.
-7. **Rebuildable**: Memories and context can always be regenerated from events.
-8. **Read-first API**: Only one write endpoint (rebuild). Everything else is read-only.
-9. **Source-traced**: Every confident answer traces back to a real record.
-10. **Fail-safe**: No evidence = refuse. Service down = refuse. Never hallucinate.
 
 ## License
 

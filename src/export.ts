@@ -10,6 +10,7 @@ import { SCHEMA_VERSION } from './types.js'
 function exportsDir() { return path.join(dataDir(), 'exports') }
 function reportsDir() { return path.join(dataDir(), 'reports') }
 function contextDir() { return path.join(dataDir(), 'context') }
+function processedDir() { return path.join(dataDir(), 'processed/notes') }
 
 export function exportAll(): string {
   const now = new Date()
@@ -21,6 +22,7 @@ export function exportAll(): string {
   mkdirSync(path.join(exportDir, 'assets'), { recursive: true })
   mkdirSync(path.join(exportDir, 'memory'), { recursive: true })
   mkdirSync(path.join(exportDir, 'context'), { recursive: true })
+  mkdirSync(path.join(exportDir, 'processed'), { recursive: true })
 
   const profile = loadProfile()
   if (profile) {
@@ -50,6 +52,14 @@ export function exportAll(): string {
     }
   }
 
+  // Processed notes (source originals)
+  if (existsSync(processedDir())) {
+    const processed = readdirSync(processedDir()).filter((f) => f.endsWith('.md'))
+    for (const file of processed) {
+      copyFileSync(path.join(processedDir(), file), path.join(exportDir, 'processed', file))
+    }
+  }
+
   for (const a of attachments) {
     const absPath = path.resolve(a.storedPath)
     if (existsSync(absPath)) {
@@ -70,9 +80,9 @@ function generateExportReadme(eventCount: number, attachmentCount: number, memor
 
 This is a complete export of the **Remi Family Memory** system${nickname ? ` for ${nickname}` : ''}.
 
-It contains all structured family memories, AI-readable memory records, attachments, context packs, and reports.
+It contains all structured family memories, AI-readable memory records, attachments, context packs, processed notes, and reports.
 
-This is NOT a backup of the application — it is a **portable archive** of your family's data that can be consumed by AI systems.
+This is NOT a backup of the application — it is a **portable archive** of your family's data.
 
 ## Schema Version
 
@@ -88,6 +98,7 @@ This is NOT a backup of the application — it is a **portable archive** of your
 | \`memory/memories.json\` | ${memoryCount} AI-readable memory records (MemoryRecord) |
 | \`context/\` | Remi context pack (markdown + JSON) |
 | \`reports/\` | Monthly report Markdown files |
+| \`processed/\` | Original note source files (after scan) |
 | \`assets/\` | Archived media files |
 
 ## Data Layers
@@ -95,26 +106,47 @@ This is NOT a backup of the application — it is a **portable archive** of your
 1. **Events** (events.json): Raw structured events — source of truth
 2. **Memories** (memory/): AI-derived memory cards with importance, facts, summaries
 3. **Context** (context/): Pre-built context pack for Remi/AI ingestion
+4. **Processed** (processed/): Original Markdown notes that produced events
 
 ## How to Restore
 
-1. Place \`events.json\` in \`data/events/events.json\`
-2. Place \`attachments.json\` in \`data/events/attachments.json\`
-3. Place \`profile.json\` in \`data/profile/baby.json\`
-4. Place \`memory/\` contents in \`data/memory/\`
-5. Place \`context/\` contents in \`data/context/\`
-6. Copy \`reports/\` to \`data/reports/\`
-7. Copy \`assets/\` to \`data/archive/assets/\`
+1. Install remi-family-memory: \`git clone\` + \`npm install\`
+2. Place \`events.json\` → \`data/events/events.json\`
+3. Place \`attachments.json\` → \`data/events/attachments.json\`
+4. Place \`profile.json\` → \`data/profile/baby.json\`
+5. Place \`memory/\` contents → \`data/memory/\`
+6. Place \`context/\` contents → \`data/context/\`
+7. Copy \`reports/\` → \`data/reports/\`
+8. Copy \`processed/\` → \`data/processed/notes/\`
+9. Copy \`assets/\` → \`data/archive/assets/\`
 
-## How Remi Uses This
+## How to Re-sync After Restore
 
-Remi loads \`context/remi-context.json\` as its family memory context. The JSON contains:
-- Baby profile summary
-- Core and high-importance memories
-- Recent events
-- Parent notes
+\`\`\`bash
+npm run sync
+\`\`\`
 
-For deeper queries, Remi can search \`memory/memories.json\` by keyword, date, or importance.
+This will scan any pending inbox notes, rebuild memory, regenerate context, and run health checks.
+
+## How to Start the Service
+
+\`\`\`bash
+npm run serve
+\`\`\`
+
+Service runs on http://localhost:3456 by default.
+
+## How to Reconnect Remi
+
+Set these environment variables in the Remi process:
+
+\`\`\`
+REMI_FAMILY_MEMORY_ENABLED=1
+REMI_FAMILY_MEMORY_SERVICE_URL=http://localhost:3456
+REMI_FAMILY_MEMORY_AI_TOKEN=<your-token-if-set>
+\`\`\`
+
+Remi will automatically reconnect on next family question or capture intent.
 
 ## Generated
 

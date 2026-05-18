@@ -1,6 +1,6 @@
 {
   "name": "remi-family-memory",
-  "version": "0.8.2",
+  "version": "1.0.0",
   "description": "A local-first family memory system — Grounded Answer Protocol for Remi/AI",
   "type": "module",
   "main": "./dist/remi-adapter.js",
@@ -17,6 +17,7 @@
   },
   "scripts": {
     "scan": "tsx src/cli.ts scan",
+    "sync": "tsx src/cli.ts sync",
     "scan-assets": "tsx src/cli.ts scan-assets",
     "serve": "tsx src/cli.ts serve",
     "dev": "tsx src/cli.ts dev",
@@ -28,7 +29,8 @@
     "doctor": "tsx src/cli.ts doctor",
     "connector": "tsx src/cli.ts connector",
     "connector:degradation": "tsx src/cli.ts connector degradation",
-    "test": "node --import tsx/esm --test src/tests/privacy.test.ts src/tests/adapter.test.ts",
+    "capture-demo": "tsx src/cli.ts capture-demo",
+    "test": "node --import tsx/esm --test src/tests/privacy.test.ts src/tests/adapter.test.ts src/tests/capture.test.ts",
     "llm:smoke": "tsx src/llm-smoke.ts",
     "llm:e2e": "tsx src/llm-e2e.ts",
     "remi:smoke": "tsx src/remi-smoke.ts",
