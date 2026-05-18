@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Remi Family Memory</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      background: #faf8f5;
+      color: #3d3530;
+      line-height: 1.6;
+    }
+
+    header {
+      background: linear-gradient(135deg, #f7e8d5 0%, #fce4ec 100%);
+      padding: 2rem 2rem 1.5rem;
+      border-bottom: 1px solid #f0dcc8;
+    }
+
+    header h1 {
+      font-size: 1.6rem;
+      font-weight: 600;
+      color: #5d4037;
+      text-align: center;
+    }
+
+    header .subtitle {
+      text-align: center;
+      color: #8d6e63;
+      font-size: 0.9rem;
+      margin-top: 0.3rem;
+    }
+
+    nav {
+      display: flex;
+      justify-content: center;
+      gap: 1.5rem;
+      margin-top: 1rem;
+    }
+
+    nav a {
+      color: #5d4037;
+      text-decoration: none;
+      font-size: 0.85rem;
+      padding: 0.3rem 0.8rem;
+      border-radius: 6px;
+      transition: background 0.2s;
+    }
+
+    nav a:hover { background: rgba(93, 64, 55, 0.08); }
+    nav a.active { background: rgba(93, 64, 55, 0.12); font-weight: 600; }
+
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 1.5rem 1.5rem 4rem;
+    }
+
+    .baby-card {
+      background: #fff;
+      border: 1px solid #efe5db;
+      border-radius: 14px;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 2px 8px rgba(93, 64, 55, 0.05);
+    }
+
+    .baby-card h2 {
+      font-size: 1.2rem;
+      color: #4e342e;
+      margin-bottom: 0.75rem;
+    }
+
+    .baby-meta {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 0.75rem;
+    }
+
+    .meta-item {
+      background: #faf5f0;
+      border-radius: 8px;
+      padding: 0.6rem 0.8rem;
+    }
+
+    .meta-item .label {
+      font-size: 0.7rem;
+      color: #a1887f;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .meta-item .value {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #5d4037;
+      margin-top: 0.15rem;
+    }
+
+    .empty {
+      text-align: center;
+      padding: 4rem 2rem;
+      color: #a1887f;
+    }
+
+    .year-group { margin-bottom: 2rem; }
+
+    .year-label {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #8d6e63;
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 2px solid #f0dcc8;
+    }
+
+    .timeline {
+      position: relative;
+      padding-left: 2rem;
+    }
+
+    .timeline::before {
+      content: '';
+      position: absolute;
+      left: 7px;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: #e0d0c0;
+    }
+
+    .event-card {
+      position: relative;
+      background: #fff;
+      border: 1px solid #efe5db;
+      border-radius: 12px;
+      padding: 1.1rem 1.3rem;
+      margin-bottom: 0.85rem;
+      box-shadow: 0 1px 3px rgba(93, 64, 55, 0.06);
+      transition: box-shadow 0.2s;
+    }
+
+    .event-card:hover {
+      box-shadow: 0 3px 12px rgba(93, 64, 55, 0.1);
+    }
+
+    .event-card::before {
+      content: '';
+      position: absolute;
+      left: -2rem;
+      top: 1.3rem;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      border: 2px solid #fff;
+      margin-left: -5px;
+    }
+
+    .event-card[data-type="pregnancy_checkup"]::before { background: #e91e63; }
+    .event-card[data-type="fetal_movement"]::before { background: #ff7043; }
+    .event-card[data-type="birth"]::before { background: #ff5722; }
+    .event-card[data-type="milestone"]::before { background: #ffc107; }
+    .event-card[data-type="parent_note"]::before { background: #795548; }
+    .event-card[data-type="family_event"]::before { background: #e91e63; }
+    .event-card[data-type="medical_record"]::before { background: #f44336; }
+    .event-card[data-type="vaccine"]::before { background: #4caf50; }
+    .event-card[data-type="growth_metric"]::before { background: #ff9800; }
+    .event-card[data-type="photo_memory"]::before { background: #2196f3; }
+    .event-card[data-type="voice_memory"]::before { background: #ab47bc; }
+    .event-card[data-type="video"]::before { background: #9c27b0; }
+    .event-card[data-type="system_event"]::before { background: #607d8b; }
+
+    .event-date {
+      font-size: 0.78rem;
+      color: #a1887f;
+      margin-bottom: 0.25rem;
+    }
+
+    .event-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.4rem;
+    }
+
+    .event-type-badge {
+      display: inline-block;
+      font-size: 0.68rem;
+      padding: 0.12em 0.55em;
+      border-radius: 999px;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+
+    .event-card[data-type="pregnancy_checkup"] .event-type-badge { background: #fce4ec; color: #c2185b; }
+    .event-card[data-type="fetal_movement"] .event-type-badge { background: #fbe9e7; color: #d84315; }
+    .event-card[data-type="birth"] .event-type-badge { background: #fbe9e7; color: #d84315; }
+    .event-card[data-type="milestone"] .event-type-badge { background: #fff8e1; color: #f57f17; }
+    .event-card[data-type="parent_note"] .event-type-badge { background: #efebe9; color: #4e342e; }
+    .event-card[data-type="family_event"] .event-type-badge { background: #fce4ec; color: #c2185b; }
+    .event-card[data-type="medical_record"] .event-type-badge { background: #ffebee; color: #c62828; }
+    .event-card[data-type="vaccine"] .event-type-badge { background: #e8f5e9; color: #2e7d32; }
+    .event-card[data-type="growth_metric"] .event-type-badge { background: #fff3e0; color: #e65100; }
+    .event-card[data-type="photo_memory"] .event-type-badge { background: #e3f2fd; color: #1565c0; }
+    .event-card[data-type="voice_memory"] .event-type-badge { background: #f3e5f5; color: #7b1fa2; }
+    .event-card[data-type="video"] .event-type-badge { background: #f3e5f5; color: #7b1fa2; }
+    .event-card[data-type="system_event"] .event-type-badge { background: #eceff1; color: #455a64; }
+
+    .event-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #3e2723;
+    }
+
+    .event-summary {
+      font-size: 0.87rem;
+      color: #6d5d53;
+      white-space: pre-line;
+      margin-top: 0.3rem;
+    }
+
+    .event-tags {
+      margin-top: 0.6rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+    }
+
+    .tag {
+      font-size: 0.68rem;
+      background: #f5f0eb;
+      color: #8d6e63;
+      padding: 0.12em 0.5em;
+      border-radius: 4px;
+    }
+
+    .people-tag { background: #ede7f6; color: #5e35b1; }
+
+    .stats {
+      text-align: center;
+      padding: 1rem;
+      color: #a1887f;
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Remi Family Memory</h1>
+    <p class="subtitle">A local-first family memory system</p>
+    <nav>
+      <a href="/" class="active">Timeline</a>
+      <a href="/profile.html">Profile</a>
+    </nav>
+  </header>
+
+  <div class="container">
+    <div id="baby-card"></div>
+    <div id="timeline"></div>
+    <div id="stats" class="stats"></div>
+  </div>
+
+  <script>
+    const TYPE_LABELS = {
+      pregnancy_checkup: '孕检',
+      fetal_movement: '胎动',
+      birth: '出生',
+      milestone: '里程碑',
+      parent_note: '父母手记',
+      family_event: '家庭事件',
+      medical_record: '医疗记录',
+      vaccine: '疫苗',
+      growth_metric: '成长指标',
+      photo_memory: '照片记忆',
+      voice_memory: '语音记忆',
+      video: '视频',
+      system_event: '系统事件',
+    }
+
+    function formatDate(iso) {
+      const d = new Date(iso)
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+    }
+
+    async function loadProfile() {
+      try {
+        const res = await fetch('/api/profile')
+        if (!res.ok) return
+        const data = await res.json()
+        const { profile, weeks, stage, totalEvents, lastEvent } = data
+
+        let html = `<div class="baby-card"><h2>${profile.familyName || ''}${profile.nickname} - ${stage}</h2><div class="baby-meta">`
+        html += `<div class="meta-item"><div class="label">预产期</div><div class="value">${formatDate(profile.expectedBirthDate)}</div></div>`
+        if (weeks !== null) {
+          html += `<div class="meta-item"><div class="label">当前孕周</div><div class="value">第 ${weeks} 周</div></div>`
+        }
+        html += `<div class="meta-item"><div class="label">已记录事件</div><div class="value">${totalEvents} 条</div></div>`
+        if (lastEvent) {
+          html += `<div class="meta-item"><div class="label">最近记录</div><div class="value">${lastEvent.title}</div></div>`
+        }
+        html += `</div></div>`
+        document.getElementById('baby-card').innerHTML = html
+      } catch(e) {}
+    }
+
+    function renderEvent(event) {
+      const tagsHtml = event.tags.map(t => `<span class="tag">${t}</span>`).join('')
+      const peopleHtml = event.people.map(p => `<span class="tag people-tag">${p}</span>`).join('')
+
+      return `
+        <div class="event-card" data-type="${event.type}">
+          <div class="event-date">${formatDate(event.occurredAt)}</div>
+          <div class="event-header">
+            <span class="event-type-badge">${TYPE_LABELS[event.type] || event.type}</span>
+            <span class="event-title">${event.title}</span>
+          </div>
+          ${event.summary ? `<div class="event-summary">${event.summary}</div>` : ''}
+          <div class="event-tags">${peopleHtml}${tagsHtml}</div>
+        </div>
+      `
+    }
+
+    async function loadTimeline() {
+      const res = await fetch('/api/events')
+      const events = await res.json()
+
+      const container = document.getElementById('timeline')
+      const stats = document.getElementById('stats')
+
+      if (events.length === 0) {
+        container.innerHTML = `<div class="empty"><p>还没有记录</p><p>将 Markdown 放入 <code>data/inbox/notes/</code> 后运行 <code>npm run scan</code></p></div>`
+        return
+      }
+
+      const grouped = {}
+      for (const event of events) {
+        const year = new Date(event.occurredAt).getFullYear()
+        if (!grouped[year]) grouped[year] = []
+        grouped[year].push(event)
+      }
+
+      const years = Object.keys(grouped).sort((a, b) => b - a)
+      let html = ''
+      for (const year of years) {
+        html += `<div class="year-group"><div class="year-label">${year}</div><div class="timeline">`
+        for (const event of grouped[year]) { html += renderEvent(event) }
+        html += `</div></div>`
+      }
+      container.innerHTML = html
+      stats.textContent = `${events.length} 条家庭记忆`
+    }
+
+    loadProfile()
+    loadTimeline()
+  </script>
+</body>
+</html>

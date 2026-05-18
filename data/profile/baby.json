@@ -1,0 +1,13 @@
+{
+  "babyId": "baby-001",
+  "nickname": "小宝",
+  "familyName": "吴",
+  "expectedBirthDate": "2026-11-15",
+  "pregnancyStartDate": "2026-02-08",
+  "parents": [
+    { "role": "father", "name": "吴健", "nickname": "爸爸" },
+    { "role": "mother", "name": "", "nickname": "妈妈" }
+  ],
+  "createdAt": "2026-05-18T00:00:00.000Z",
+  "updatedAt": "2026-05-18T00:00:00.000Z"
+}

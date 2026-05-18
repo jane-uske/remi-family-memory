@@ -1,0 +1,11 @@
+node_modules/
+dist/
+data/events/
+data/processed/
+data/archive/
+data/exports/
+data/reports/
+data/memory/
+data/context/
+*.log
+.DS_Store

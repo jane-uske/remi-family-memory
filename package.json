@@ -1,0 +1,32 @@
+{
+  "name": "remi-family-memory",
+  "version": "0.6.0",
+  "description": "A local-first family memory system — Grounded Answer Protocol for Remi/AI",
+  "type": "module",
+  "scripts": {
+    "scan": "tsx src/cli.ts scan",
+    "scan-assets": "tsx src/cli.ts scan-assets",
+    "serve": "tsx src/cli.ts serve",
+    "dev": "tsx src/cli.ts dev",
+    "report": "tsx src/cli.ts report",
+    "build-memory": "tsx src/cli.ts build-memory",
+    "context": "tsx src/cli.ts context",
+    "search": "tsx src/cli.ts search",
+    "export": "tsx src/cli.ts export",
+    "doctor": "tsx src/cli.ts doctor",
+    "connector": "tsx src/cli.ts connector",
+    "connector:degradation": "tsx src/cli.ts connector degradation",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "gray-matter": "^4.0.3",
+    "nanoid": "^5.1.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

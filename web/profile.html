@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Profile - Remi Family Memory</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      background: #faf8f5;
+      color: #3d3530;
+      line-height: 1.6;
+    }
+
+    header {
+      background: linear-gradient(135deg, #f7e8d5 0%, #fce4ec 100%);
+      padding: 2rem 2rem 1.5rem;
+      border-bottom: 1px solid #f0dcc8;
+    }
+
+    header h1 {
+      font-size: 1.6rem;
+      font-weight: 600;
+      color: #5d4037;
+      text-align: center;
+    }
+
+    header .subtitle {
+      text-align: center;
+      color: #8d6e63;
+      font-size: 0.9rem;
+      margin-top: 0.3rem;
+    }
+
+    nav {
+      display: flex;
+      justify-content: center;
+      gap: 1.5rem;
+      margin-top: 1rem;
+    }
+
+    nav a {
+      color: #5d4037;
+      text-decoration: none;
+      font-size: 0.85rem;
+      padding: 0.3rem 0.8rem;
+      border-radius: 6px;
+      transition: background 0.2s;
+    }
+
+    nav a:hover { background: rgba(93, 64, 55, 0.08); }
+    nav a.active { background: rgba(93, 64, 55, 0.12); font-weight: 600; }
+
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 1.5rem 1.5rem 4rem;
+    }
+
+    .section {
+      background: #fff;
+      border: 1px solid #efe5db;
+      border-radius: 14px;
+      padding: 1.5rem;
+      margin-bottom: 1.25rem;
+      box-shadow: 0 2px 8px rgba(93, 64, 55, 0.05);
+    }
+
+    .section h2 {
+      font-size: 1.05rem;
+      color: #5d4037;
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid #f0dcc8;
+    }
+
+    .profile-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 0.75rem;
+    }
+
+    .profile-item {
+      background: #faf5f0;
+      border-radius: 8px;
+      padding: 0.7rem 0.9rem;
+    }
+
+    .profile-item .label {
+      font-size: 0.7rem;
+      color: #a1887f;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .profile-item .value {
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: #5d4037;
+      margin-top: 0.1rem;
+    }
+
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+      gap: 0.6rem;
+    }
+
+    .stat-item {
+      text-align: center;
+      background: #faf5f0;
+      border-radius: 8px;
+      padding: 0.8rem 0.5rem;
+    }
+
+    .stat-item .number {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #5d4037;
+    }
+
+    .stat-item .label {
+      font-size: 0.72rem;
+      color: #a1887f;
+      margin-top: 0.2rem;
+    }
+
+    .event-list { list-style: none; }
+
+    .event-list li {
+      padding: 0.6rem 0;
+      border-bottom: 1px solid #f5f0eb;
+      display: flex;
+      gap: 0.75rem;
+      align-items: baseline;
+    }
+
+    .event-list li:last-child { border-bottom: none; }
+
+    .event-list .date {
+      font-size: 0.78rem;
+      color: #a1887f;
+      white-space: nowrap;
+      min-width: 80px;
+    }
+
+    .event-list .title {
+      font-size: 0.9rem;
+      color: #4e342e;
+      font-weight: 500;
+    }
+
+    .event-list .summary {
+      font-size: 0.8rem;
+      color: #8d6e63;
+      margin-top: 0.2rem;
+    }
+
+    .empty-hint {
+      color: #bcaaa4;
+      font-size: 0.85rem;
+      font-style: italic;
+    }
+
+    .parents-list {
+      list-style: none;
+      display: flex;
+      gap: 1rem;
+    }
+
+    .parents-list li {
+      background: #faf5f0;
+      border-radius: 8px;
+      padding: 0.5rem 1rem;
+      font-size: 0.9rem;
+      color: #5d4037;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Remi Family Memory</h1>
+    <p class="subtitle">A local-first family memory system</p>
+    <nav>
+      <a href="/">Timeline</a>
+      <a href="/profile.html" class="active">Profile</a>
+    </nav>
+  </header>
+
+  <div class="container">
+    <div id="content">Loading...</div>
+  </div>
+
+  <script>
+    const TYPE_LABELS = {
+      pregnancy_checkup: '孕检',
+      fetal_movement: '胎动',
+      birth: '出生',
+      milestone: '里程碑',
+      parent_note: '父母手记',
+      family_event: '家庭事件',
+      medical_record: '医疗记录',
+      vaccine: '疫苗',
+      growth_metric: '成长指标',
+      photo_memory: '照片记忆',
+      voice_memory: '语音记忆',
+      video: '视频',
+      system_event: '系统事件',
+    }
+
+    function formatDate(iso) {
+      const d = new Date(iso)
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+    }
+
+    function formatSize(bytes) {
+      if (bytes < 1024) return bytes + 'B'
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + 'KB'
+      return (bytes / (1024 * 1024)).toFixed(1) + 'MB'
+    }
+
+    function renderEventList(events, emptyMsg) {
+      if (!events.length) return `<p class="empty-hint">${emptyMsg}</p>`
+      return `<ul class="event-list">${events.map(e => `
+        <li>
+          <span class="date">${formatDate(e.occurredAt)}</span>
+          <div><span class="title">${e.title}</span>${e.summary ? `<div class="summary">${e.summary.slice(0, 80)}${e.summary.length > 80 ? '...' : ''}</div>` : ''}</div>
+        </li>`).join('')}</ul>`
+    }
+
+    async function load() {
+      const [profileRes, eventsRes, statsRes, attachmentsRes] = await Promise.all([
+        fetch('/api/profile'),
+        fetch('/api/events'),
+        fetch('/api/stats'),
+        fetch('/api/attachments'),
+      ])
+
+      const container = document.getElementById('content')
+
+      if (!profileRes.ok) {
+        container.innerHTML = `<div class="section"><h2>No Profile</h2><p>请先创建 data/profile/baby.json</p></div>`
+        return
+      }
+
+      const { profile, weeks, stage, totalEvents } = await profileRes.json()
+      const events = await eventsRes.json()
+      const { byType, unattachedAssets } = await statsRes.json()
+      const attachments = await attachmentsRes.json()
+
+      const milestones = events.filter(e => e.type === 'milestone')
+      const checkups = events.filter(e => e.type === 'pregnancy_checkup')
+      const parentNotes = events.filter(e => e.type === 'parent_note')
+      const unattachedList = attachments.filter(a => !a.eventId)
+
+      let html = ''
+
+      // Baby info section
+      html += `<div class="section"><h2>${profile.familyName || ''}${profile.nickname} - 成长档案</h2>`
+      html += `<div class="profile-grid">`
+      html += `<div class="profile-item"><div class="label">当前阶段</div><div class="value">${stage}</div></div>`
+      if (weeks !== null) html += `<div class="profile-item"><div class="label">孕周</div><div class="value">第 ${weeks} 周</div></div>`
+      html += `<div class="profile-item"><div class="label">预产期</div><div class="value">${formatDate(profile.expectedBirthDate)}</div></div>`
+      if (profile.pregnancyStartDate) html += `<div class="profile-item"><div class="label">孕期开始</div><div class="value">${formatDate(profile.pregnancyStartDate)}</div></div>`
+      html += `</div>`
+      if (profile.parents && profile.parents.length) {
+        html += `<ul class="parents-list" style="margin-top:1rem">`
+        for (const p of profile.parents) {
+          html += `<li>${p.nickname || p.name} (${p.role === 'father' ? '爸爸' : p.role === 'mother' ? '妈妈' : p.role})</li>`
+        }
+        html += `</ul>`
+      }
+      html += `</div>`
+
+      // Stats section
+      html += `<div class="section"><h2>记录统计</h2><div class="stat-grid">`
+      html += `<div class="stat-item"><div class="number">${totalEvents}</div><div class="label">总记录</div></div>`
+      if (attachments.length > 0) html += `<div class="stat-item"><div class="number">${attachments.length}</div><div class="label">资料附件</div></div>`
+      for (const [type, count] of Object.entries(byType)) {
+        html += `<div class="stat-item"><div class="number">${count}</div><div class="label">${TYPE_LABELS[type] || type}</div></div>`
+      }
+      html += `</div></div>`
+
+      // Milestones section
+      html += `<div class="section"><h2>关键里程碑</h2>`
+      html += renderEventList(milestones, '暂无里程碑记录')
+      html += `</div>`
+
+      // Checkups section
+      html += `<div class="section"><h2>孕检记录</h2>`
+      html += renderEventList(checkups, '暂无孕检记录')
+      html += `</div>`
+
+      // Parent notes section
+      html += `<div class="section"><h2>父母手记</h2>`
+      html += renderEventList(parentNotes, '暂无父母手记')
+      html += `</div>`
+
+      // Unattached assets section
+      if (unattachedList.length > 0) {
+        html += `<div class="section"><h2>未关联资料 (${unattachedList.length})</h2>`
+        html += `<ul class="event-list">`
+        for (const a of unattachedList) {
+          html += `<li><span class="date">[${a.type}]</span><div><span class="title">${a.originalFilename}</span><div class="summary">${formatSize(a.size)} | ${formatDate(a.importedAt)} 导入</div></div></li>`
+        }
+        html += `</ul></div>`
+      }
+
+      container.innerHTML = html
+    }
+
+    load()
+  </script>
+</body>
+</html>
