@@ -177,6 +177,31 @@ switch (command) {
     break
   }
 
+  case 'enrich-draft': {
+    const draftId = process.argv[3]
+    if (!draftId) {
+      console.error('Usage: tsx src/cli.ts enrich-draft <draftId>')
+      process.exit(1)
+    }
+    const { enrichDraft } = await import('./draft_enrichment.js')
+    const result = await enrichDraft(draftId)
+    if (result.ok) {
+      console.log(`Done. ${result.message}`)
+    } else {
+      console.warn(`Skipped: ${result.message}`)
+      if (result.error === 'not_found') process.exit(1)
+    }
+    break
+  }
+
+  case 'enrich-drafts': {
+    console.log('Enriching pending drafts with local VLM...')
+    const { enrichPendingDrafts } = await import('./draft_enrichment.js')
+    const stats = await enrichPendingDrafts()
+    console.log(`Done. ${stats.enriched} enriched, ${stats.skipped} skipped, ${stats.failed} failed (${stats.total} total).`)
+    break
+  }
+
   default:
     console.log(`Remi Family Memory CLI`)
     console.log()
@@ -188,6 +213,8 @@ switch (command) {
     console.log('  scan-assets       Scan assets inbox only')
     console.log('  intake-assets     Generate draft notes from unlinked attachments')
     console.log('  extract-ocr       Re-run OCR for pending drafts missing sidecars')
+    console.log('  enrich-draft <id> Enrich a pending draft with local VLM (requires VLM_MODEL)')
+    console.log('  enrich-drafts     Enrich all pending drafts with local VLM')
     console.log('  serve             Start the timeline web server')
     console.log('  dev               Scan + serve')
     console.log('  report [YYYY-MM]  Generate monthly report')
