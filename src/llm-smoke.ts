@@ -1,6 +1,6 @@
 import { CloudAdapter } from './adapters/cloud.js'
 import { DeterministicAdapter } from './adapters/deterministic.js'
-import type { LLMInput, LLMOutput, PayloadAudit } from './adapters/types.js'
+import type { LLMInput, LLMOutput, PayloadAudit, ResultSource } from './adapters/types.js'
 import type { CloudConfig } from './adapters/cloud.js'
 
 const SMOKE_QUESTIONS: { question: string; category: 'answerable' | 'unanswerable' | 'partial'; evidence: LLMInput['evidence'] }[] = [
@@ -123,7 +123,7 @@ type SmokeResult = {
   sourceRefs: LLMOutput['sourceRefs']
   validatorPassed: boolean
   validatorNote: string
-  fallback: boolean
+  resultSource: string
   audit: PayloadAudit
 }
 
@@ -180,13 +180,12 @@ async function runSmoke() {
 
     const audit = adapter.auditPayload(input)
     let output: LLMOutput
-    let fallback = false
     let validatorPassed = true
     let validatorNote = 'OK'
 
     if (!audit.safe) {
       output = await new DeterministicAdapter().generate(input)
-      fallback = true
+      output.resultSource = 'audit_blocked'
       validatorNote = `BLOCKED by audit: ${audit.risks.join(', ')}`
       validatorPassed = false
     } else {
@@ -195,13 +194,6 @@ async function runSmoke() {
       if (output.reason === 'validation_failed_no_sources' || output.reason === 'validation_failed_phantom_sources') {
         validatorPassed = false
         validatorNote = `Validator rejected: ${output.reason}`
-      }
-
-      // Detect fallback: if cloud was supposed to call LLM but we got deterministic-style answer
-      // (heuristic: check if adapter internally fell back)
-      if (output.answerable && output.answer.startsWith('根据家庭记忆记录') && q.evidence.items.length > 0) {
-        fallback = true
-        validatorNote = 'Appears to be deterministic fallback'
       }
     }
 
@@ -255,7 +247,7 @@ async function runSmoke() {
       sourceRefs: output.sourceRefs,
       validatorPassed,
       validatorNote,
-      fallback,
+      resultSource: output.resultSource || 'unknown',
       audit,
     }
     results.push(result)
@@ -269,7 +261,7 @@ async function runSmoke() {
     console.log(`    Answer: ${output.answer.slice(0, 100)}${output.answer.length > 100 ? '...' : ''}`)
     console.log(`    Sources: ${output.sourceRefs.length > 0 ? output.sourceRefs.map((s) => s.memoryId || s.sourceEventId || '?').join(', ') : '(none)'}`)
     console.log(`    Validator: ${validatorNote}`)
-    console.log(`    Fallback: ${fallback}`)
+    console.log(`    Result source: ${output.resultSource || 'unknown'}`)
     console.log(`    Audit: ${audit.safe ? 'SAFE' : 'UNSAFE'} | ${audit.evidenceItemCount} items | ${audit.byteSize}B`)
     if (!correct) console.log(`    ISSUE: ${issue}`)
     console.log('')

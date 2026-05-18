@@ -23,7 +23,7 @@ type E2EResult = {
   fromContext: boolean
   fromSearch: boolean
   validatorStatus: string
-  fallback: boolean
+  resultSource: string
   auditStatus: string
 }
 
@@ -131,15 +131,13 @@ async function runE2E() {
     }
     const audit = cloudAdapter.auditPayload(adapterInput)
 
-    // Detect if connector fell back (connector uses createAdapter which checks env)
-    const adapterType = connector.getAdapterType()
-    const fallback = adapterType === 'deterministic'
-
     // Validator status
     let validatorStatus = 'OK'
     if (answer.reason === 'validation_failed_no_sources') validatorStatus = 'REJECTED: no sources'
     else if (answer.reason === 'validation_failed_phantom_sources') validatorStatus = 'REJECTED: phantom sources'
     else if (answer.reason === 'validation_failed_missing_sources_for_used_evidence') validatorStatus = 'REJECTED: missing sources for used evidence'
+
+    const resultSource = answer.resultSource || (connector.getAdapterType() === 'deterministic' ? 'deterministic' : 'unknown')
 
     const result: E2EResult = {
       question,
@@ -152,7 +150,7 @@ async function runE2E() {
       fromContext: answer.evidence.fromContext,
       fromSearch: answer.evidence.fromSearch,
       validatorStatus,
-      fallback,
+      resultSource,
       auditStatus: audit.safe ? 'SAFE' : `UNSAFE [${audit.risks.join('; ')}]`,
     }
     results.push(result)
@@ -164,7 +162,7 @@ async function runE2E() {
     console.log(`    Sources: ${answer.sources.length > 0 ? answer.sources.map((s) => s.memoryId || s.title || '?').join(', ') : '(none)'}`)
     console.log(`    Evidence: ${answer.evidence.items.length} items (context=${answer.evidence.fromContext}, search=${answer.evidence.fromSearch})`)
     console.log(`    Validator: ${validatorStatus}`)
-    console.log(`    Fallback: ${fallback}`)
+    console.log(`    Result source: ${resultSource}`)
     console.log(`    Audit: ${audit.safe ? 'SAFE' : 'UNSAFE'}`)
     console.log('')
   }

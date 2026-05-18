@@ -1,4 +1,5 @@
 import type { LLMAdapter, LLMInput, LLMOutput, SourceRef } from './types.js'
+import { isBroadHealthQuestion, containsBannedBroadConclusion } from './cloud.js'
 
 export class DeterministicAdapter implements LLMAdapter {
   type = 'deterministic' as const
@@ -14,11 +15,11 @@ export class DeterministicAdapter implements LLMAdapter {
         confidence: 'none',
         reason: 'no_evidence',
         sourceRefs: [],
+        resultSource: 'deterministic',
       }
     }
 
-    const isBroad = ['身体状态', '发育情况', '整体', '最近怎么样', '健康状况', '状态怎么样']
-      .some((p) => question.includes(p))
+    const isBroad = isBroadHealthQuestion(question)
 
     if (isBroad) {
       const sources = items.map(toSourceRef)
@@ -28,6 +29,7 @@ export class DeterministicAdapter implements LLMAdapter {
         confidence: 'low',
         reason: 'partial_evidence',
         sourceRefs: sources,
+        resultSource: 'deterministic',
       }
     }
 
@@ -41,6 +43,7 @@ export class DeterministicAdapter implements LLMAdapter {
       confidence,
       reason: 'evidence_found',
       sourceRefs: sources,
+      resultSource: 'deterministic',
     }
   }
 

@@ -742,6 +742,219 @@ describe('v0.7.2: Partial evidence must not become no_evidence', () => {
   })
 })
 
+// --- v0.7.3: Broad Health Guardrail ---
+
+describe('v0.7.3: Broad health/status guardrail', () => {
+  it('broad health question cannot have high confidence', async () => {
+    const { CloudAdapter } = await import('../adapters/cloud.js')
+    const adapter = new CloudAdapter({ provider: 'openai', apiKey: 'test', model: 'test' })
+
+    const input = {
+      question: '宝宝最近身体状态怎么样？',
+      evidence: {
+        query: '身体',
+        items: [{
+          source: 'memory' as const,
+          memoryId: 'mem-checkup-001',
+          sourceEventId: 'evt-001',
+          date: '2026-05-15',
+          title: '16周常规孕检',
+          snippet: 'NT检查通过，各项指标正常',
+          importance: 'high' as const,
+        }],
+        fromContext: false,
+        fromSearch: true,
+        collectedAt: new Date().toISOString(),
+      },
+      promptContract: 'grounded_answer_v1',
+    }
+
+    const llmOutput = {
+      answerable: true,
+      answer: '根据16周常规孕检记录，各项指标正常。',
+      confidence: 'high' as const,
+      reason: 'evidence_found',
+      sourceRefs: [{ memoryId: 'mem-checkup-001', date: '2026-05-15', title: '16周常规孕检' }],
+    }
+
+    const validated = adapter.validateOutput(llmOutput, input)
+    assert.notEqual(validated.confidence, 'high', 'broad health question must not be high confidence')
+    assert.equal(validated.reason, 'partial_evidence')
+  })
+
+  it('broad health question with banned conclusion gets rewritten', async () => {
+    const { CloudAdapter } = await import('../adapters/cloud.js')
+    const adapter = new CloudAdapter({ provider: 'openai', apiKey: 'test', model: 'test' })
+
+    const input = {
+      question: '宝宝最近身体状态怎么样？',
+      evidence: {
+        query: '身体',
+        items: [{
+          source: 'memory' as const,
+          memoryId: 'mem-checkup-001',
+          sourceEventId: 'evt-001',
+          date: '2026-05-15',
+          title: '16周常规孕检',
+          snippet: 'NT检查通过，各项指标正常',
+          importance: 'high' as const,
+        }],
+        fromContext: false,
+        fromSearch: true,
+        collectedAt: new Date().toISOString(),
+      },
+      promptContract: 'grounded_answer_v1',
+    }
+
+    const llmOutput = {
+      answerable: true,
+      answer: '宝宝整体情况良好，16周孕检各项指标正常。',
+      confidence: 'high' as const,
+      reason: 'evidence_found',
+      sourceRefs: [{ memoryId: 'mem-checkup-001', date: '2026-05-15', title: '16周常规孕检' }],
+    }
+
+    const validated = adapter.validateOutput(llmOutput, input)
+    assert.ok(!validated.answer.includes('整体情况良好'), 'banned conclusion must be removed')
+    assert.ok(validated.answer.includes('不能据此完整判断'), 'must include limitation disclaimer')
+    assert.equal(validated.reason, 'partial_evidence')
+    assert.ok(validated.sourceRefs.length > 0, 'must still have sourceRefs')
+  })
+
+  it('non-broad question is not affected by guardrail', async () => {
+    const { CloudAdapter } = await import('../adapters/cloud.js')
+    const adapter = new CloudAdapter({ provider: 'openai', apiKey: 'test', model: 'test' })
+
+    const input = {
+      question: '宝宝第一次胎动是什么时候？',
+      evidence: {
+        query: '胎动',
+        items: [{
+          source: 'memory' as const,
+          memoryId: 'mem-fetal-001',
+          sourceEventId: 'evt-fetal-001',
+          date: '2026-05-10',
+          title: '第一次感受到胎动',
+          snippet: '妈妈第一次明显感受到胎动，像是小鱼在肚子里游动。',
+          importance: 'core' as const,
+        }],
+        fromContext: true,
+        fromSearch: false,
+        collectedAt: new Date().toISOString(),
+      },
+      promptContract: 'grounded_answer_v1',
+    }
+
+    const llmOutput = {
+      answerable: true,
+      answer: '根据记录，2026-05-10妈妈第一次感受到胎动，像是小鱼在肚子里游动。',
+      confidence: 'high' as const,
+      reason: 'evidence_found',
+      sourceRefs: [{ memoryId: 'mem-fetal-001', date: '2026-05-10', title: '第一次感受到胎动' }],
+    }
+
+    const validated = adapter.validateOutput(llmOutput, input)
+    assert.equal(validated.confidence, 'high', 'non-broad question keeps high confidence')
+    assert.equal(validated.reason, 'evidence_found')
+  })
+
+  it('deterministic adapter also enforces guardrail for broad health questions', async () => {
+    const { DeterministicAdapter } = await import('../adapters/index.js')
+    const adapter = new DeterministicAdapter()
+
+    const result = await adapter.generate({
+      question: '宝宝发育得好吗？',
+      evidence: {
+        query: '发育',
+        items: [{
+          source: 'memory' as const,
+          memoryId: 'mem-001',
+          date: '2026-05-15',
+          title: '16周常规孕检',
+          snippet: '各项指标正常',
+          importance: 'high' as const,
+        }],
+        fromContext: false,
+        fromSearch: true,
+        collectedAt: new Date().toISOString(),
+      },
+      promptContract: 'grounded_answer_v1',
+    })
+
+    assert.equal(result.reason, 'partial_evidence')
+    assert.equal(result.confidence, 'low')
+    assert.ok(result.sourceRefs.length > 0)
+    assert.ok(!result.answer.includes('整体情况良好'))
+    assert.ok(!result.answer.includes('发育很好'))
+    assert.ok(!result.answer.includes('很健康'))
+  })
+
+  it('isBroadHealthQuestion detects various patterns', async () => {
+    const { isBroadHealthQuestion } = await import('../adapters/cloud.js')
+
+    assert.equal(isBroadHealthQuestion('身体状态怎么样'), true)
+    assert.equal(isBroadHealthQuestion('宝宝发育得好吗'), true)
+    assert.equal(isBroadHealthQuestion('宝宝健康吗'), true)
+    assert.equal(isBroadHealthQuestion('最近怎么样'), true)
+    assert.equal(isBroadHealthQuestion('状态如何'), true)
+    assert.equal(isBroadHealthQuestion('一直正常吗'), true)
+    assert.equal(isBroadHealthQuestion('有没有问题'), true)
+    assert.equal(isBroadHealthQuestion('第一次胎动是什么时候'), false)
+    assert.equal(isBroadHealthQuestion('最近一次孕检是什么'), false)
+  })
+
+  it('containsBannedBroadConclusion detects banned phrases', async () => {
+    const { containsBannedBroadConclusion } = await import('../adapters/cloud.js')
+
+    assert.equal(containsBannedBroadConclusion('宝宝整体情况良好'), true)
+    assert.equal(containsBannedBroadConclusion('目前状态良好，没问题'), true)
+    assert.equal(containsBannedBroadConclusion('宝宝很健康'), true)
+    assert.equal(containsBannedBroadConclusion('发育很好'), true)
+    assert.equal(containsBannedBroadConclusion('一切正常'), true)
+    assert.equal(containsBannedBroadConclusion('根据孕检记录，NT检查通过'), false)
+    assert.equal(containsBannedBroadConclusion('只找到1条记录'), false)
+  })
+
+  it('broad health question with partial_evidence correction also enforces guardrail', async () => {
+    const { CloudAdapter } = await import('../adapters/cloud.js')
+    const adapter = new CloudAdapter({ provider: 'openai', apiKey: 'test', model: 'test' })
+
+    const input = {
+      question: '宝宝最近身体状态怎么样？',
+      evidence: {
+        query: '身体',
+        items: [{
+          source: 'memory' as const,
+          memoryId: 'mem-checkup-001',
+          sourceEventId: 'evt-001',
+          date: '2026-05-15',
+          title: '16周常规孕检',
+          snippet: 'NT检查通过，各项指标正常',
+          importance: 'high' as const,
+        }],
+        fromContext: false,
+        fromSearch: true,
+        collectedAt: new Date().toISOString(),
+      },
+      promptContract: 'grounded_answer_v1',
+    }
+
+    // LLM says no_evidence but answer references evidence with banned conclusion
+    const llmOutput = {
+      answerable: false,
+      answer: '根据2026-05-15的检查，整体情况良好。',
+      confidence: 'none' as const,
+      reason: 'no_evidence',
+      sourceRefs: [],
+    }
+
+    const validated = adapter.validateOutput(llmOutput, input)
+    assert.equal(validated.reason, 'partial_evidence')
+    assert.ok(!validated.answer.includes('整体情况良好'), 'banned conclusion must be removed after correction')
+    assert.ok(validated.sourceRefs.length > 0)
+  })
+})
+
 // Cleanup
 process.on('exit', () => {
   rmSync(TEST_DATA_DIR, { recursive: true, force: true })

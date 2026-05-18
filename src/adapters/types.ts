@@ -26,12 +26,15 @@ export type EvidencePayloadItem = {
   importance?: MemoryImportance
 }
 
+export type ResultSource = 'cloud' | 'deterministic' | 'deterministic_fallback' | 'audit_blocked'
+
 export type LLMOutput = {
   answerable: boolean
   answer: string
   confidence: 'high' | 'medium' | 'low' | 'none'
   reason: string
   sourceRefs: SourceRef[]
+  resultSource?: ResultSource
 }
 
 export type SourceRef = {

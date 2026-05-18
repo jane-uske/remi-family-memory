@@ -1,6 +1,7 @@
 import type { MemoryRecord, MemoryImportance } from './types.js'
 import { createAdapter } from './adapters/index.js'
 import type { LLMAdapter, EvidencePayload, EvidencePayloadItem } from './adapters/index.js'
+import type { ResultSource } from './adapters/types.js'
 
 const DEFAULT_BASE_URL = 'http://localhost:3456'
 
@@ -50,6 +51,7 @@ export type GroundedAnswer = {
   }[]
   evidence: EvidencePack
   serviceStatus: ConnectorStatus
+  resultSource?: ResultSource
   generatedAt: string
 }
 
@@ -264,6 +266,7 @@ export class RemiConnector {
       sources,
       evidence,
       serviceStatus: this.status,
+      resultSource: output.resultSource,
       generatedAt: now,
     }
   }

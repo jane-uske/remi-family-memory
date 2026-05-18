@@ -47,7 +47,8 @@ export class CloudAdapter implements LLMAdapter {
 
     if (!audit.safe) {
       console.error(`[cloud-adapter] BLOCKED: payload failed safety audit — ${audit.risks.join(', ')}`)
-      return this.fallback.generate(input)
+      const result = await this.fallback.generate(input)
+      return { ...result, resultSource: 'audit_blocked' }
     }
 
     if (input.evidence.items.length === 0) {
@@ -57,6 +58,7 @@ export class CloudAdapter implements LLMAdapter {
         confidence: 'none',
         reason: 'no_evidence',
         sourceRefs: [],
+        resultSource: 'cloud',
       }
     }
 
@@ -65,11 +67,12 @@ export class CloudAdapter implements LLMAdapter {
       raw = await this.callLLM(input)
     } catch (e) {
       console.error(`[cloud-adapter] LLM call failed: ${e instanceof Error ? e.message : e}`)
-      return this.fallback.generate(input)
+      const result = await this.fallback.generate(input)
+      return { ...result, resultSource: 'deterministic_fallback' }
     }
 
     const validated = this.validateOutput(raw, input)
-    return validated
+    return { ...validated, resultSource: 'cloud' }
   }
 
   buildPayload(input: LLMInput): { messages: { role: string; content: string }[] } {
@@ -239,7 +242,13 @@ export class CloudAdapter implements LLMAdapter {
         }
       }
 
-      return { ...output, sourceRefs: validSources }
+      let result = { ...output, sourceRefs: validSources }
+
+      if (isBroadHealthQuestion(input.question)) {
+        result = this.enforceBroadHealthGuardrail(result, input)
+      }
+
+      return result
     }
 
     // --- Partial evidence correction ---
@@ -247,7 +256,7 @@ export class CloudAdapter implements LLMAdapter {
     if (input.evidence.items.length > 0 && output.reason === 'no_evidence') {
       const usesEvidence = this.answerUsesEvidence(output.answer, input.evidence.items)
       if (usesEvidence.length > 0) {
-        return {
+        const corrected: LLMOutput = {
           answerable: true,
           answer: output.answer,
           confidence: 'low',
@@ -259,6 +268,10 @@ export class CloudAdapter implements LLMAdapter {
             title: item.title,
           })),
         }
+        if (isBroadHealthQuestion(input.question)) {
+          return this.enforceBroadHealthGuardrail(corrected, input)
+        }
+        return corrected
       }
     }
 
@@ -266,7 +279,7 @@ export class CloudAdapter implements LLMAdapter {
     if (input.evidence.items.length > 0 && output.sourceRefs.length === 0) {
       const usesEvidence = this.answerUsesEvidence(output.answer, input.evidence.items)
       if (usesEvidence.length > 0) {
-        return {
+        const corrected: LLMOutput = {
           answerable: true,
           answer: output.answer,
           confidence: output.confidence === 'none' ? 'low' : output.confidence,
@@ -278,6 +291,10 @@ export class CloudAdapter implements LLMAdapter {
             title: item.title,
           })),
         }
+        if (isBroadHealthQuestion(input.question)) {
+          return this.enforceBroadHealthGuardrail(corrected, input)
+        }
+        return corrected
       }
     }
 
@@ -295,4 +312,51 @@ export class CloudAdapter implements LLMAdapter {
       return false
     })
   }
+
+  private enforceBroadHealthGuardrail(output: LLMOutput, input: LLMInput): LLMOutput {
+    const capped: LLMOutput = {
+      ...output,
+      confidence: output.confidence === 'high' ? 'medium' : output.confidence,
+      reason: 'partial_evidence',
+    }
+
+    if (containsBannedBroadConclusion(capped.answer)) {
+      capped.answer = buildSafeBroadAnswer(input.evidence.items)
+    }
+
+    return capped
+  }
+}
+
+const BROAD_HEALTH_PATTERNS = [
+  /身体状态/, /发育.{0,2}好/, /健康吗/, /最近怎么样/,
+  /状态如何/, /状态怎么样/, /一直正常/, /有没有问题/,
+  /发育情况/, /健康状况/, /整体.*怎/,
+]
+
+export function isBroadHealthQuestion(question: string): boolean {
+  return BROAD_HEALTH_PATTERNS.some((p) => p.test(question))
+}
+
+const BANNED_BROAD_CONCLUSIONS = [
+  '整体情况良好', '目前状态良好', '很健康', '发育很好',
+  '没问题', '一切正常', '状态不错', '整体良好',
+  '身体状况良好', '发育正常', '一切都好', '非常健康',
+]
+
+export function containsBannedBroadConclusion(answer: string): boolean {
+  return BANNED_BROAD_CONCLUSIONS.some((phrase) => answer.includes(phrase))
+}
+
+function buildSafeBroadAnswer(items: LLMInput['evidence']['items']): string {
+  if (items.length === 0) {
+    return '当前家庭记忆库里没有找到足够的相关记录来完整判断身体状态。'
+  }
+  const dates = [...new Set(items.map((e) => e.date).filter(Boolean))]
+  const titles = items.map((e) => e.title).filter(Boolean).slice(0, 3)
+  let answer = `目前只找到 ${items.length} 条相关记录`
+  if (dates.length > 0) answer += `（${dates.join('、')}）`
+  if (titles.length > 0) answer += `：${titles.join('、')}`
+  answer += '。该记录只能说明当时检查情况，不能据此完整判断整体身体状态。如需更准确的回答，请补充更多家庭记录。'
+  return answer
 }

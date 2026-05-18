@@ -5,7 +5,7 @@ import type { CloudConfig } from './cloud.js'
 
 export type { LLMAdapter, LLMInput, LLMOutput, EvidencePayload, EvidencePayloadItem, PayloadAudit, SourceRef, AdapterType } from './types.js'
 export { DeterministicAdapter } from './deterministic.js'
-export { CloudAdapter } from './cloud.js'
+export { CloudAdapter, isBroadHealthQuestion, containsBannedBroadConclusion } from './cloud.js'
 export type { CloudConfig } from './cloud.js'
 
 export function getAdapterConfig(): { type: AdapterType; cloudConfig?: CloudConfig } {
