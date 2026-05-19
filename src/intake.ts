@@ -3,7 +3,7 @@ import { nanoid } from 'nanoid'
 import { loadAttachments } from './attachments.js'
 import { loadAllDrafts, saveDraft, saveOcrSidecar } from './drafts.js'
 import { listEvents } from './store.js'
-import { extractOcrForDraft } from './ocr.js'
+import { extractOcrForAttachment } from './ocr.js'
 import type { Attachment, DraftNote, OcrStatus } from './types.js'
 
 export function inferDateFromFilename(filename: string): string | null {
@@ -28,6 +28,41 @@ export function inferDateFromFilename(filename: string): string | null {
   return null
 }
 
+export function inferDateFromOcrText(text: string): string | null {
+  const normalized = text
+    .replace(/年/g, '-')
+    .replace(/月/g, '-')
+    .replace(/日/g, '')
+
+  const patterns = [
+    /(?:检查|检验|报告|采样|采集|日期|时间|date|time)[^\d]{0,20}(20\d{2})[.\-/](\d{1,2})[.\-/](\d{1,2})/giu,
+    /(20\d{2})[.\-/](\d{1,2})[.\-/](\d{1,2})/gu,
+  ]
+
+  for (const pattern of patterns) {
+    for (const match of normalized.matchAll(pattern)) {
+      const date = normalizeDate(match[1], match[2], match[3])
+      if (date) return date
+    }
+  }
+
+  return null
+}
+
+function normalizeDate(year: string, month: string, day: string): string | null {
+  const y = Number(year)
+  const m = Number(month)
+  const d = Number(day)
+  if (y < 2020 || y > 2035 || m < 1 || m > 12 || d < 1 || d > 31) return null
+
+  const date = new Date(Date.UTC(y, m - 1, d))
+  if (date.getUTCFullYear() !== y || date.getUTCMonth() !== m - 1 || date.getUTCDate() !== d) {
+    return null
+  }
+
+  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+}
+
 function getSubdirectory(attachment: Attachment): string | null {
   const relPath = attachment.originalRelativePath
   if (!relPath) return null
@@ -36,21 +71,22 @@ function getSubdirectory(attachment: Attachment): string | null {
   return dir
 }
 
-export function groupAttachments(attachments: Attachment[]): Map<string, Attachment[]> {
+export function groupAttachments(
+  attachments: Attachment[],
+  detectedDates: Map<string, string> = new Map(),
+): Map<string, Attachment[]> {
   const groups = new Map<string, Attachment[]>()
 
   for (const a of attachments) {
     const subdir = getSubdirectory(a)
+    const filenameDate = inferDateFromFilename(a.originalFilename)
+    const ocrDate = detectedDates.get(a.attachmentId)
     let key: string
 
-    if (subdir) {
-      key = `subdir:${subdir}`
-    } else {
-      const dateFromName = inferDateFromFilename(a.originalFilename)
-      key = dateFromName
-        ? `date:${dateFromName}`
-        : `imported:${a.importedAt.slice(0, 10)}`
-    }
+    if (filenameDate) key = `date:${filenameDate}`
+    else if (ocrDate) key = `date:${ocrDate}`
+    else if (subdir) key = `subdir:${subdir}`
+    else key = `imported:${a.importedAt.slice(0, 10)}`
 
     const group = groups.get(key) || []
     group.push(a)
@@ -96,7 +132,21 @@ export async function intakeAssets(): Promise<{ draftsCreated: number; skipped: 
     return { draftsCreated: 0, skipped }
   }
 
-  const groups = groupAttachments(undrafted)
+  const ocrByAttachmentId = new Map<string, { text: string; result: Awaited<ReturnType<typeof extractOcrForAttachment>>['result'] }>()
+  const detectedDates = new Map<string, string>()
+
+  for (const attachment of undrafted) {
+    const ocr = await extractOcrForAttachment(attachment)
+    saveOcrSidecar(ocr.result, ocr.text)
+    ocrByAttachmentId.set(attachment.attachmentId, ocr)
+
+    if (ocr.result.status === 'extracted') {
+      const date = inferDateFromOcrText(ocr.text)
+      if (date) detectedDates.set(attachment.attachmentId, date)
+    }
+  }
+
+  const groups = groupAttachments(undrafted, detectedDates)
   const batchId = nanoid()
   let draftsCreated = 0
 
@@ -115,10 +165,7 @@ export async function intakeAssets(): Promise<{ draftsCreated: number; skipped: 
       inferredDate = groupAtts[0]?.importedAt.slice(0, 10) || null
     }
 
-    const ocrResults = await extractOcrForDraft(groupAtts)
-    for (const r of ocrResults) {
-      saveOcrSidecar(r.result, r.text)
-    }
+    const ocrResults = groupAtts.map((a) => ocrByAttachmentId.get(a.attachmentId)).filter((r): r is NonNullable<typeof r> => !!r)
 
     const extractedCount = ocrResults.filter((r) => r.result.status === 'extracted').length
     let ocrStatus: OcrStatus | 'partial'

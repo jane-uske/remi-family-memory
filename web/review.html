@@ -482,6 +482,107 @@
 
     .filter-chip:hover { border-color: #8d6e63; }
     .filter-chip.active { background: #5d4037; color: #fff; border-color: #5d4037; }
+
+    .review-form {
+      display: grid;
+      grid-template-columns: minmax(180px, 1fr) 150px 160px;
+      gap: 0.6rem;
+      margin: 1rem 0;
+    }
+
+    .review-field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      font-size: 0.78rem;
+      color: #8d6e63;
+      font-weight: 600;
+    }
+
+    .review-field input,
+    .review-field select,
+    .facts-input {
+      border: 1px solid #d9c8ba;
+      border-radius: 6px;
+      padding: 0.55rem 0.65rem;
+      font: inherit;
+      color: #3e2723;
+      background: #fff;
+    }
+
+    .evidence-block {
+      margin-top: 0.9rem;
+      border-top: 1px solid #f0e2d6;
+      padding-top: 0.9rem;
+    }
+
+    .evidence-title {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: #5d4037;
+      margin-bottom: 0.5rem;
+    }
+
+    .attachment-evidence {
+      padding: 0.65rem 0;
+      border-bottom: 1px solid #f6ece4;
+    }
+
+    .attachment-head {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+      font-size: 0.82rem;
+      margin-bottom: 0.35rem;
+    }
+
+    .attachment-head a {
+      color: #5d4037;
+      font-weight: 700;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
+    .ocr-status {
+      padding: 0.12rem 0.45rem;
+      border-radius: 999px;
+      background: #edf7ed;
+      color: #2e7d32;
+      font-size: 0.72rem;
+      font-weight: 600;
+    }
+
+    .ocr-lines {
+      margin: 0.35rem 0 0;
+      padding-left: 1.2rem;
+      color: #5d4037;
+      line-height: 1.55;
+      font-size: 0.84rem;
+    }
+
+    .facts-input {
+      width: 100%;
+      min-height: 7rem;
+      resize: vertical;
+      line-height: 1.45;
+    }
+
+    .draft-warning {
+      color: #b45309;
+      background: #fff7ed;
+      border: 1px solid #fed7aa;
+      border-radius: 6px;
+      padding: 0.45rem 0.6rem;
+      margin-top: 0.5rem;
+      font-size: 0.82rem;
+    }
+
+    @media (max-width: 720px) {
+      .review-form {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 <body>
@@ -815,14 +916,25 @@
 
       let html = ''
       for (const d of drafts) {
-        const title = d.inferredTitle || d.originalFilenames.join(', ')
+        const ev = d.reviewEvidence || {}
+        const title = d.inferredTitle || ev.suggestedTitle || d.originalFilenames.join(', ')
         const dateStr = d.inferredDate || '未知日期'
-        const typeStr = d.inferredType ? (TYPE_LABELS[d.inferredType] || d.inferredType) : '待识别'
+        const resolvedType = d.inferredType || ev.suggestedType || ''
+        const typeStr = resolvedType ? (TYPE_LABELS[resolvedType] || resolvedType) : '待识别'
         const files = d.originalFilenames.join(', ')
-        const enriched = d.extractedFacts && d.extractedFacts.length > 0
+        const usefulFacts = ev.usefulVlmFacts || []
+        const discardedFacts = ev.discardedVlmFacts || []
+        const suggestedFacts = ev.suggestedFacts || []
+        const suggestedSummary = ev.suggestedSummary || ''
+        const enriched = usefulFacts.length > 0
         const enrichHtml = enriched
-          ? `<div class="draft-enrichment">&#x2713; VLM 已识别：${d.extractedFacts.slice(0, 3).map(escHtml).join('、')}</div>`
+          ? `<div class="draft-enrichment">&#x2713; VLM 可用候选：${usefulFacts.slice(0, 3).map(escHtml).join('、')}</div>`
           : ''
+        const discardedHtml = discardedFacts.length > 0
+          ? `<div class="draft-warning">已过滤不可信 VLM 输出：${discardedFacts.slice(0, 3).map(escHtml).join('、')}</div>`
+          : ''
+        const evidenceHtml = renderDraftEvidence(ev)
+        const factsValue = suggestedFacts.join('\n')
 
         html += `
           <div class="draft-card" id="draft-${d.draftId}">
@@ -834,7 +946,23 @@
             <div class="memory-title">${escHtml(title)}</div>
             <div class="draft-files">文件：${escHtml(files)}</div>
             ${enrichHtml}
-            <textarea class="summary-input" id="summary-${d.draftId}" placeholder="可补充摘要（可选）"></textarea>
+            ${discardedHtml}
+            ${evidenceHtml}
+            <div class="review-form">
+              <label class="review-field">标题
+                <input id="title-${d.draftId}" value="${escAttr(title)}" />
+              </label>
+              <label class="review-field">类型
+                <select id="type-${d.draftId}">
+                  ${renderTypeOptions(resolvedType)}
+                </select>
+              </label>
+              <label class="review-field">日期
+                <input id="date-${d.draftId}" value="${escAttr(d.inferredDate || '')}" />
+              </label>
+            </div>
+            <textarea class="summary-input" id="summary-${d.draftId}" placeholder="确认摘要">${escHtml(suggestedSummary)}</textarea>
+            <textarea class="facts-input" id="facts-${d.draftId}" placeholder="确认事实：一行一条，确认后写入记忆 facts">${escHtml(factsValue)}</textarea>
             <div class="draft-actions">
               <button class="btn btn-confirm" onclick="confirmDraft('${d.draftId}')">确认</button>
               <button class="btn btn-reject" onclick="rejectDraft('${d.draftId}')">跳过</button>
@@ -845,10 +973,55 @@
       document.getElementById('pending-section').innerHTML = html
     }
 
+    function renderTypeOptions(selected) {
+      const options = ['', 'pregnancy_checkup', 'medical_record', 'growth_metric', 'parent_note', 'family_event']
+      return options.map(value => {
+        const label = value ? (TYPE_LABELS[value] || value) : '待识别'
+        const isSelected = value === selected ? 'selected' : ''
+        return `<option value="${escAttr(value)}" ${isSelected}>${escHtml(label)}</option>`
+      }).join('')
+    }
+
+    function renderDraftEvidence(ev) {
+      const attachments = ev.attachments || []
+      if (attachments.length === 0) return ''
+
+      return `
+        <div class="evidence-block">
+          <div class="evidence-title">OCR 证据</div>
+          ${attachments.map((a) => {
+            const lines = a.ocrLines || []
+            const linesHtml = lines.length > 0
+              ? `<ul class="ocr-lines">${lines.map(line => `<li>${escHtml(line)}</li>`).join('')}</ul>`
+              : '<div class="draft-files">没有可读 OCR 片段</div>'
+            return `
+              <div class="attachment-evidence">
+                <div class="attachment-head">
+                  <a href="${escAttr(a.url)}" target="_blank" rel="noopener">${escHtml(a.filename)}</a>
+                  <span class="ocr-status">OCR: ${escHtml(a.ocrStatus || 'missing')}</span>
+                </div>
+                ${linesHtml}
+              </div>
+            `
+          }).join('')}
+        </div>
+      `
+    }
+
     async function confirmDraft(draftId) {
       const summaryEl = document.getElementById(`summary-${draftId}`)
       const summary = summaryEl ? summaryEl.value.trim() : ''
-      const body = summary ? { summary } : {}
+      const title = document.getElementById(`title-${draftId}`)?.value.trim() || ''
+      const date = document.getElementById(`date-${draftId}`)?.value.trim() || ''
+      const type = document.getElementById(`type-${draftId}`)?.value.trim() || ''
+      const factsRaw = document.getElementById(`facts-${draftId}`)?.value || ''
+      const facts = factsRaw.split('\n').map(f => f.trim()).filter(Boolean)
+      const body = {}
+      if (title) body.title = title
+      if (date) body.date = date
+      if (type) body.type = type
+      if (summary) body.summary = summary
+      body.facts = facts
 
       try {
         const res = await fetch(`/api/drafts/${draftId}/confirm`, {
@@ -895,6 +1068,10 @@
       const div = document.createElement('div')
       div.textContent = str
       return div.innerHTML
+    }
+
+    function escAttr(str) {
+      return escHtml(str || '').replace(/"/g, '&quot;')
     }
 
     // --- v1.8: Trial tracker ---

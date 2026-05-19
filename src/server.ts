@@ -16,6 +16,7 @@ import { writeInboxNote, writeParentCapture, checkStageGuardrail, getCurrentStag
 import { loadPendingDrafts, confirmDraft, rejectDraft } from './drafts.js'
 import { enrichDraft, enrichPendingDrafts } from './draft_enrichment.js'
 import { intakeAssets } from './intake.js'
+import { buildDraftReviewEvidence } from './review_evidence.js'
 import { computeDailyMetrics, recordDailyMetrics, getTrialSummary, loadTrialLog } from './trial.js'
 import { DraftCapability } from './draft-capability.js'
 import type { DraftSessionState } from './draft-capability.js'
@@ -100,6 +101,24 @@ export function startServer(port = 3456) {
     res.json(attachments)
   })
 
+  app.get('/api/attachments/:attachmentId/file', (req, res) => {
+    const attachment = loadAttachments().find((a) => a.attachmentId === req.params.attachmentId)
+    if (!attachment) {
+      res.status(404).json({ error: 'not_found' })
+      return
+    }
+
+    const absolutePath = path.resolve(attachment.storedPath)
+    if (!existsSync(absolutePath)) {
+      res.status(404).json({ error: 'file_missing' })
+      return
+    }
+
+    res.type(attachment.mimeType)
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(attachment.originalFilename)}"`)
+    res.sendFile(absolutePath)
+  })
+
   app.get('/api/memories', (_req, res) => {
     const memories = loadMemories()
     res.json({ total: memories.length, memories })
@@ -174,18 +193,28 @@ export function startServer(port = 3456) {
 
   app.get('/api/drafts/pending', (_req, res) => {
     const drafts = loadPendingDrafts()
-    res.json({ total: drafts.length, drafts })
+    const attachments = loadAttachments()
+    res.json({
+      total: drafts.length,
+      drafts: drafts.map((draft) => ({
+        ...draft,
+        reviewEvidence: buildDraftReviewEvidence(draft, attachments),
+      })),
+    })
   })
 
   app.post('/api/drafts/:draftId/confirm', (req, res) => {
     const { draftId } = req.params
-    const { title, date, type, summary, tags } = req.body || {}
+    const { title, date, type, summary, tags, facts } = req.body || {}
     const overrides: Record<string, unknown> = {}
     if (title) overrides.title = title
     if (date) overrides.date = date
     if (type) overrides.type = type
     if (summary) overrides.summary = summary
     if (tags) overrides.tags = tags
+    if (Array.isArray(facts)) {
+      overrides.facts = facts.filter((f) => typeof f === 'string' && f.trim()).map((f) => f.trim())
+    }
 
     const result = confirmDraft(draftId, Object.keys(overrides).length > 0 ? overrides as any : undefined)
     if (!result.ok) {
@@ -368,13 +397,16 @@ export function startServer(port = 3456) {
 
   app.post('/api/ai/drafts/:draftId/confirm', (req, res) => {
     const { draftId } = req.params
-    const { title, date, type, summary, tags } = req.body || {}
+    const { title, date, type, summary, tags, facts } = req.body || {}
     const overrides: Record<string, unknown> = {}
     if (title) overrides.title = title
     if (date) overrides.date = date
     if (type) overrides.type = type
     if (summary) overrides.summary = summary
     if (tags) overrides.tags = tags
+    if (Array.isArray(facts)) {
+      overrides.facts = facts.filter((f) => typeof f === 'string' && f.trim()).map((f) => f.trim())
+    }
 
     const result = confirmDraft(draftId, Object.keys(overrides).length > 0 ? overrides as any : undefined)
     if (!result.ok) {
