@@ -64,6 +64,10 @@ function buildFacts(event: BabyEvent): string[] {
     facts.push(`标签：${event.tags.join('、')}`)
   }
 
+  if (event.facts && event.facts.length > 0) {
+    facts.push(...event.facts)
+  }
+
   return facts
 }
 
@@ -123,6 +127,7 @@ export function buildMemories(): { total: number; created: number; updated: numb
 
   for (const event of events) {
     if (event.sensitivity === 'blocked_from_ai') continue
+    if (event.confirmedByParent !== true) continue
 
     const prev = existingByEventId.get(event.id)
     if (prev) {

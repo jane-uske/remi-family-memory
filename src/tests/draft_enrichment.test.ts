@@ -322,3 +322,98 @@ describe('enrichPendingDrafts bulk', () => {
     assert.equal(stats.results.length, stats.total)
   })
 })
+
+describe('v1.2 Product invariants: enrichment cannot bypass confirmation', () => {
+  const invariantDraftId = 'invariant-check-draft'
+  const invariantAttId = 'att-invariant-img'
+
+  before(() => {
+    const storedPath = path.join(TEST_DATA_DIR, 'archive/assets', `${invariantAttId}.png`)
+    writeFileSync(storedPath, 'fake-image-invariant')
+
+    const imgAtt: Attachment = {
+      attachmentId: invariantAttId,
+      type: 'image',
+      originalFilename: 'invariant.png',
+      storedPath,
+      mimeType: 'image/png',
+      size: 100,
+      sha256: 'img-sha-invariant',
+      createdAt: new Date().toISOString(),
+      importedAt: new Date().toISOString(),
+      schemaVersion: '1.1.1.1',
+    }
+    addAttachment(imgAtt)
+
+    const draft: DraftNote = {
+      draftId: invariantDraftId,
+      batchId: 'batch-invariant',
+      status: 'pending',
+      inferredDate: null,
+      inferredTitle: null,
+      inferredType: null,
+      attachmentIds: [invariantAttId],
+      originalFilenames: ['invariant.png'],
+      source: 'asset_intake',
+      reviewStatus: 'draft',
+      captureStatus: 'pending_parent_review',
+      uncertainFields: ['title', 'type'],
+      createdAt: new Date().toISOString(),
+    }
+    saveDraft(draft)
+  })
+
+  it('enrichment does NOT change draft status to confirmed', async () => {
+    const result = await enrichDraft(invariantDraftId, makeMockFetch())
+    assert.equal(result.ok, true)
+
+    const pending = loadPendingDrafts()
+    const draft = pending.find((d) => d.draftId === invariantDraftId)
+    assert.ok(draft, 'draft must still exist in pending after enrichment')
+    assert.equal(draft.status, 'pending', 'draft status must remain pending')
+    assert.notEqual(draft.inferredTitle, null, 'title should be enriched')
+  })
+
+  it('enriched draft still requires parent confirmation for memory', async () => {
+    const pending = loadPendingDrafts()
+    const draft = pending.find((d) => d.draftId === invariantDraftId)
+    assert.ok(draft)
+    assert.equal(draft.captureStatus, 'pending_parent_review')
+  })
+
+  it('VLM-generated facts are stored but NOT in confirmed memory', async () => {
+    const { loadMemories } = await import('../memory.js')
+    const memories = loadMemories()
+
+    const leaked = memories.find((m) => m.title === VALID_VLM_RESPONSE.inferredTitle)
+    assert.equal(leaked, undefined, 'VLM output must NOT appear in confirmed memory without explicit confirm')
+  })
+
+  it('VLM unavailable does not break draft flow', async () => {
+    const failDraft: DraftNote = {
+      draftId: 'vlm-unavail-draft',
+      batchId: 'batch-unavail',
+      status: 'pending',
+      inferredDate: null,
+      inferredTitle: null,
+      inferredType: null,
+      attachmentIds: [invariantAttId],
+      originalFilenames: ['photo.png'],
+      source: 'asset_intake',
+      reviewStatus: 'draft',
+      captureStatus: 'pending_parent_review',
+      uncertainFields: ['title'],
+      createdAt: new Date().toISOString(),
+    }
+    saveDraft(failDraft)
+
+    const result = await enrichDraft('vlm-unavail-draft', failedFetch)
+    assert.equal(result.ok, false)
+    if (!result.ok) assert.equal(result.error, 'vlm_failed')
+
+    const pending = loadPendingDrafts()
+    const draft = pending.find((d) => d.draftId === 'vlm-unavail-draft')
+    assert.ok(draft, 'draft must still exist in pending when VLM fails')
+    assert.equal(draft.status, 'pending')
+  })
+})

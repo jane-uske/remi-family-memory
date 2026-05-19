@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, existsSync } from 'node:fs'
 import path from 'node:path'
 import { dataDir } from './paths.js'
-import { listAISafeEvents } from './store.js'
+import { listAISafeEvents, listOwnerVisibleEvents } from './store.js'
 import { loadAttachments } from './attachments.js'
 import { loadMemories } from './memory.js'
 import { EVENT_TYPE_LABELS } from './types.js'
@@ -13,7 +13,7 @@ export function search(keyword: string): SearchResult[] {
   const results: SearchResult[] = []
   const kw = keyword.toLowerCase()
 
-  const events = listAISafeEvents()
+  const events = listOwnerVisibleEvents()
   for (const e of events) {
     const searchable = [e.title, e.summary || '', e.tags.join(' '), e.people.join(' ')].join(' ')
     if (searchable.toLowerCase().includes(kw)) {

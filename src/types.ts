@@ -65,6 +65,7 @@ export type BabyEvent = {
 
   title: string
   summary?: string
+  facts?: string[]
 
   source: {
     kind: 'manual' | 'folder' | 'photo' | 'video' | 'voice' | 'document' | 'system'

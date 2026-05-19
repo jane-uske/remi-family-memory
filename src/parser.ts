@@ -70,6 +70,10 @@ export function parseMarkdownNote(
     ? frontmatter.attachmentIds
     : undefined
 
+  const facts: string[] | undefined = Array.isArray(frontmatter.facts) && frontmatter.facts.length > 0
+    ? frontmatter.facts
+    : undefined
+
   const now = new Date().toISOString()
 
   return {
@@ -80,6 +84,7 @@ export function parseMarkdownNote(
     type,
     title,
     summary,
+    facts,
     source,
     attachmentIds,
     people,

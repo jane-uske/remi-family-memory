@@ -34,7 +34,7 @@
     "connector": "tsx src/cli.ts connector",
     "connector:degradation": "tsx src/cli.ts connector degradation",
     "capture-demo": "tsx src/cli.ts capture-demo",
-    "test": "node --import tsx/esm --test src/tests/privacy.test.ts src/tests/adapter.test.ts src/tests/capture.test.ts src/tests/drafts.test.ts src/tests/ocr.test.ts src/tests/draft-capability.test.ts src/tests/local_vlm_extractor.test.ts src/tests/draft_enrichment.test.ts",
+    "test": "node --import tsx/esm --test src/tests/privacy.test.ts src/tests/adapter.test.ts src/tests/capture.test.ts src/tests/drafts.test.ts src/tests/ocr.test.ts src/tests/draft-capability.test.ts src/tests/local_vlm_extractor.test.ts src/tests/draft_enrichment.test.ts src/tests/confirmed-only-guard.test.ts",
     "llm:smoke": "tsx src/llm-smoke.ts",
     "llm:e2e": "tsx src/llm-e2e.ts",
     "remi:smoke": "tsx src/remi-smoke.ts",

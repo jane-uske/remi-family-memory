@@ -92,6 +92,7 @@ export type DraftOverrides = {
   type?: BabyEventType
   summary?: string
   tags?: string[]
+  facts?: string[]
 }
 
 export type ConfirmResult =
@@ -121,6 +122,10 @@ export function confirmDraft(draftId: string, overrides?: DraftOverrides): Confi
   const attachmentIdsYaml = draft.attachmentIds.map((id) => `  - ${id}`).join('\n')
   const originalFilenamesYaml = draft.originalFilenames.map((f) => `  - "${f}"`).join('\n')
   const tagsYaml = tags.length > 0 ? `\ntags: [${tags.join(', ')}]` : ''
+  const resolvedFacts = overrides && 'facts' in overrides ? overrides.facts! : (draft.extractedFacts || [])
+  const factsYaml = resolvedFacts.length > 0
+    ? `\nfacts:\n${resolvedFacts.map((f) => `  - "${f.replace(/"/g, '\\"')}"`).join('\n')}`
+    : ''
 
   const content = [
     '---',
@@ -137,6 +142,7 @@ export function confirmDraft(draftId: string, overrides?: DraftOverrides): Confi
     `draftId: "${draftId}"`,
     'sensitivity: normal',
     ...(tagsYaml ? [tagsYaml.trim()] : []),
+    ...(factsYaml ? [factsYaml.trim()] : []),
     '---',
     '',
     summary || title,

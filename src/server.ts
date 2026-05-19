@@ -13,6 +13,7 @@ import { SCHEMA_VERSION } from './types.js'
 import { RemiMemoryAdapter } from './remi-adapter.js'
 import { writeInboxNote, checkStageGuardrail, getCurrentStage } from './capture.js'
 import { loadPendingDrafts, confirmDraft, rejectDraft } from './drafts.js'
+import { enrichDraft, enrichPendingDrafts } from './draft_enrichment.js'
 import { DraftCapability } from './draft-capability.js'
 import type { DraftSessionState } from './draft-capability.js'
 import type { Request, Response, NextFunction } from 'express'
@@ -271,6 +272,32 @@ export function startServer(port = 3456) {
       return
     }
     res.json(result)
+  })
+
+  app.post('/api/ai/drafts/:draftId/enrich', async (req, res) => {
+    const { draftId } = req.params
+    try {
+      const result = await enrichDraft(draftId)
+      if (!result.ok) {
+        const status = result.error === 'not_found' ? 404
+          : result.error === 'no_vlm_config' ? 503
+          : 400
+        res.status(status).json(result)
+        return
+      }
+      res.json(result)
+    } catch (e) {
+      res.status(500).json({ ok: false, error: 'internal', message: `Enrich failed: ${e instanceof Error ? e.message : String(e)}` })
+    }
+  })
+
+  app.post('/api/ai/drafts/enrich-all', async (_req, res) => {
+    try {
+      const stats = await enrichPendingDrafts()
+      res.json(stats)
+    } catch (e) {
+      res.status(500).json({ ok: false, error: 'internal', message: `Enrich failed: ${e instanceof Error ? e.message : String(e)}` })
+    }
   })
 
   app.post('/api/ai/drafts/chat', (req, res) => {

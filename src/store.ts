@@ -41,5 +41,11 @@ export function hasSourcePath(sourcePath: string): boolean {
 }
 
 export function listAISafeEvents(): BabyEvent[] {
+  return listEvents().filter(
+    (e) => e.sensitivity !== 'blocked_from_ai' && e.confirmedByParent === true
+  )
+}
+
+export function listOwnerVisibleEvents(): BabyEvent[] {
   return listEvents().filter((e) => e.sensitivity !== 'blocked_from_ai')
 }

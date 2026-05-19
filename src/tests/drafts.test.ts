@@ -469,3 +469,206 @@ describe('v1.1.1.1: recursive subdirectory scanning', () => {
     process.env.REMI_DATA_DIR = originalDataDir
   })
 })
+
+describe('v1.1.2: enriched draft confirm pipeline', () => {
+  let enrichedDraftId: string
+
+  before(async () => {
+    const assetPath = path.join(TEST_DATA_DIR, 'inbox/assets', '2026-05-19-vlm-test.png')
+    writeFileSync(assetPath, 'fake-image-for-enriched-confirm-test')
+    scanAssets()
+    await intakeAssets()
+
+    const pending = loadPendingDrafts()
+    const vlmDraft = pending.find((d) => d.originalFilenames.includes('2026-05-19-vlm-test.png'))
+    assert.ok(vlmDraft, 'Should have pending draft for vlm test image')
+    enrichedDraftId = vlmDraft.draftId
+
+    vlmDraft.extractedFacts = ['CRL: 7.2cm', 'NT: 1.2mm', '胎心: 158bpm']
+    vlmDraft.inferredTitle = 'VLM推断的13周超声'
+    vlmDraft.inferredType = 'pregnancy_checkup'
+    vlmDraft.extractionMetadata = {
+      model: 'moondream2',
+      extractedAt: new Date().toISOString(),
+      attachmentId: vlmDraft.attachmentIds[0],
+      validationWarnings: [],
+      rawResponseLength: 500,
+    }
+    saveDraft(vlmDraft)
+  })
+
+  it('enriched pending draft is NOT in events or memory', () => {
+    const events = listEvents()
+    const pending = loadPendingDrafts()
+    const enriched = pending.find((d) => d.draftId === enrichedDraftId)
+    assert.ok(enriched)
+    assert.ok(enriched.extractedFacts!.length > 0, 'Draft should have extractedFacts')
+
+    for (const e of events) {
+      if (e.attachmentIds) {
+        for (const id of enriched.attachmentIds) {
+          assert.ok(!e.attachmentIds.includes(id), 'Enriched draft attachment should not be in events yet')
+        }
+      }
+    }
+  })
+
+  it('confirmDraft with overrides: overrides take priority over VLM candidates', () => {
+    const result = confirmDraft(enrichedDraftId, {
+      title: '家长修正的标题',
+      date: '2026-05-19',
+      type: 'pregnancy_checkup',
+      summary: '13周常规检查',
+      tags: ['孕检'],
+    })
+
+    assert.equal(result.ok, true)
+    if (result.ok) {
+      const absPath = path.resolve(result.filePath)
+      const content = readFileSync(absPath, 'utf-8')
+      assert.ok(content.includes('title: "家长修正的标题"'), 'Override title should be used')
+      assert.ok(content.includes('facts:'), 'Facts should be in confirmed note')
+      assert.ok(content.includes('CRL: 7.2cm'), 'Extracted facts should be preserved')
+      assert.ok(content.includes('NT: 1.2mm'))
+      assert.ok(content.includes('胎心: 158bpm'))
+    }
+  })
+
+  it('confirmed enriched draft produces event with facts after scan', () => {
+    const scanResult = scanInbox()
+    assert.ok(scanResult.added >= 1)
+
+    const events = listEvents()
+    const enrichedEvent = events.find((e) => e.title === '家长修正的标题')
+    assert.ok(enrichedEvent, 'Should find confirmed enriched event')
+    assert.equal(enrichedEvent.type, 'pregnancy_checkup')
+    assert.equal(enrichedEvent.confirmedByParent, true)
+    assert.ok(enrichedEvent.facts, 'Event should have facts')
+    assert.ok(enrichedEvent.facts!.includes('CRL: 7.2cm'))
+    assert.ok(enrichedEvent.facts!.includes('NT: 1.2mm'))
+    assert.ok(enrichedEvent.facts!.includes('胎心: 158bpm'))
+  })
+
+  it('rejected enriched draft is never visible in events or memory', () => {
+    const rejectAssetPath = path.join(TEST_DATA_DIR, 'inbox/assets', '2026-05-19-reject-vlm.png')
+    writeFileSync(rejectAssetPath, 'fake-image-for-rejected-enriched-test-unique')
+    scanAssets()
+  })
+
+  it('old non-VLM draft still confirms normally', () => {
+    const oldDraft: DraftNote = {
+      draftId: 'old-plain-draft-test',
+      batchId: 'batch-old',
+      status: 'pending',
+      inferredDate: '2026-05-01',
+      inferredTitle: '普通草稿',
+      inferredType: 'parent_note',
+      attachmentIds: [],
+      originalFilenames: ['manual-note.txt'],
+      source: 'asset_intake',
+      reviewStatus: 'draft',
+      captureStatus: 'pending_parent_review',
+      uncertainFields: [],
+      createdAt: new Date().toISOString(),
+    }
+    saveDraft(oldDraft)
+
+    const result = confirmDraft('old-plain-draft-test', { title: '普通确认' })
+    assert.equal(result.ok, true)
+    if (result.ok) {
+      const content = readFileSync(path.resolve(result.filePath), 'utf-8')
+      assert.ok(content.includes('title: "普通确认"'))
+      assert.ok(!content.includes('facts:'), 'Non-VLM draft should have no facts in note')
+    }
+  })
+})
+
+describe('v1.1.2 patch: facts override on confirmDraft', () => {
+  it('facts override replaces VLM extractedFacts', () => {
+    const draft: DraftNote = {
+      draftId: 'facts-override-test',
+      batchId: 'batch-facts',
+      status: 'pending',
+      inferredDate: '2026-05-20',
+      inferredTitle: 'VLM标题',
+      inferredType: 'pregnancy_checkup',
+      attachmentIds: [],
+      originalFilenames: ['img.png'],
+      source: 'asset_intake',
+      reviewStatus: 'draft',
+      captureStatus: 'pending_parent_review',
+      uncertainFields: [],
+      extractedFacts: ['VLM原始事实1', 'VLM原始事实2'],
+      createdAt: new Date().toISOString(),
+    }
+    saveDraft(draft)
+
+    const result = confirmDraft('facts-override-test', {
+      facts: ['家长修正事实A', '家长修正事实B'],
+    })
+    assert.equal(result.ok, true)
+    if (result.ok) {
+      const content = readFileSync(path.resolve(result.filePath), 'utf-8')
+      assert.ok(content.includes('家长修正事实A'), 'Override facts should be in note')
+      assert.ok(content.includes('家长修正事实B'))
+      assert.ok(!content.includes('VLM原始事实1'), 'Original VLM facts should NOT be in note')
+      assert.ok(!content.includes('VLM原始事实2'))
+    }
+  })
+
+  it('empty facts array removes all facts from confirmed note', () => {
+    const draft: DraftNote = {
+      draftId: 'facts-empty-test',
+      batchId: 'batch-facts-empty',
+      status: 'pending',
+      inferredDate: '2026-05-20',
+      inferredTitle: '有VLM事实的草稿',
+      inferredType: 'parent_note',
+      attachmentIds: [],
+      originalFilenames: ['img2.png'],
+      source: 'asset_intake',
+      reviewStatus: 'draft',
+      captureStatus: 'pending_parent_review',
+      uncertainFields: [],
+      extractedFacts: ['应该被删除的事实'],
+      createdAt: new Date().toISOString(),
+    }
+    saveDraft(draft)
+
+    const result = confirmDraft('facts-empty-test', { facts: [] })
+    assert.equal(result.ok, true)
+    if (result.ok) {
+      const content = readFileSync(path.resolve(result.filePath), 'utf-8')
+      assert.ok(!content.includes('facts:'), 'Empty facts override should produce no facts in note')
+      assert.ok(!content.includes('应该被删除的事实'))
+    }
+  })
+
+  it('no facts override defaults to VLM extractedFacts', () => {
+    const draft: DraftNote = {
+      draftId: 'facts-default-test',
+      batchId: 'batch-facts-default',
+      status: 'pending',
+      inferredDate: '2026-05-20',
+      inferredTitle: '默认保留VLM事实',
+      inferredType: 'parent_note',
+      attachmentIds: [],
+      originalFilenames: ['img3.png'],
+      source: 'asset_intake',
+      reviewStatus: 'draft',
+      captureStatus: 'pending_parent_review',
+      uncertainFields: [],
+      extractedFacts: ['默认VLM事实'],
+      createdAt: new Date().toISOString(),
+    }
+    saveDraft(draft)
+
+    const result = confirmDraft('facts-default-test', { title: '确认但不改facts' })
+    assert.equal(result.ok, true)
+    if (result.ok) {
+      const content = readFileSync(path.resolve(result.filePath), 'utf-8')
+      assert.ok(content.includes('facts:'), 'Default should include VLM facts')
+      assert.ok(content.includes('默认VLM事实'))
+    }
+  })
+})
