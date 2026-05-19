@@ -2,7 +2,7 @@
 
 [中文版](README.zh-CN.md)
 
-**v1.0 Self-use MVP** — stable for daily family use.
+**v1.9 Daily Flow + Trial** — stable for daily family use with Review UI, OCR, and quick capture.
 
 > A local-first family memory system — capture, archive, and grounded AI retrieval for your family's story.
 
@@ -20,14 +20,16 @@ This is a **local-first, private, long-term family memory system** that:
 - Enforces grounded answers — every AI response cites real records, never fabricates
 - Stores everything as local files you own forever — no cloud, no database
 
-## Self-Use Guide (v1.0)
+## Self-Use Guide (v1.9)
 
 ### How to Start
 
 ```bash
 npm install
-npm run serve   # Starts service on http://localhost:3456
+npm run dev     # Scan + start server on http://localhost:3456
 ```
+
+Open **http://localhost:3456/review.html** — the daily Review page.
 
 Remi connects via environment variables:
 
@@ -37,7 +39,13 @@ REMI_FAMILY_MEMORY_SERVICE_URL=http://localhost:3456
 REMI_FAMILY_MEMORY_AI_TOKEN=<optional-token>
 ```
 
-### How to Record (via Remi)
+### How to Record
+
+#### Quick Capture (Review page)
+
+Open http://localhost:3456/review.html — type a one-line family event in the input box and press Enter.
+
+#### Via Remi (conversation)
 
 Tell Remi in natural language:
 
@@ -63,15 +71,15 @@ Reply "确认" to save, "算了" to cancel. Confirmation expires after 5 minutes
 
 ### How to Sync
 
-After recording, run sync to process the note into the formal timeline and AI memory:
+After recording or confirming drafts, sync to update the AI memory:
 
 ```bash
 npm run sync
 ```
 
-This runs 4 steps: scan inbox → build memory → generate context → health check.
+Or click the **"同步刷新记忆"** button on the Review page.
 
-Capture confirmation message: "已记录到家庭记忆 inbox。运行 sync 后会进入正式时间线和 Remi 可查询记忆。"
+This runs 4 steps: scan inbox → build memory → generate context → health check.
 
 ### How to Query
 
@@ -109,34 +117,54 @@ sensitivity: blocked_from_ai
 
 This content enters the event timeline but **never** reaches AI-facing layers (memories, context, search, or Remi).
 
+### How to Import Photos / PDFs
+
+Place files in `data/inbox/assets/` then run:
+
+```bash
+npm run scan-assets       # Register attachments
+npm run intake-assets     # Create pending drafts + run OCR
+```
+
+Open the Review page to confirm or skip each draft.
+
+### How to Confirm Drafts
+
+On http://localhost:3456/review.html:
+
+1. **Dashboard** shows pending count, OCR status
+2. **Pending tab** lists drafts — add title/summary, then click "确认" or "跳过"
+3. Click **"同步刷新记忆"** to finalize
+
 ### What's Currently Not Supported
 
 - Voice / audio input
-- Photo / image recognition / OCR
-- Local LLM integration
 - NAS / Docker deployment
 - Multi-child / multi-family
-- Automatic media processing
+- Automatic media processing (auto-confirm)
 - Complex permission system
+- Local LLM integration (Ollama, llama.cpp)
 
 ## Commands
 
 ```bash
+npm run dev               # Scan + serve (daily start)
 npm run sync              # Daily workflow: scan + build-memory + context + doctor
 npm run scan              # Scan inbox (notes + assets)
 npm run scan-assets       # Scan assets inbox only
+npm run intake-assets     # Create draft notes from unlinked attachments
+npm run extract-ocr       # Re-run OCR for drafts missing sidecars
+npm run enrich-drafts     # Enrich drafts with local VLM (needs VLM_MODEL)
 npm run serve             # Start local memory service (port 3456)
-npm run dev               # Scan + serve
 npm run report [YYYY-MM]  # Generate monthly report
 npm run build-memory      # Build AI memory records from events
 npm run context           # Generate Remi context pack
 npm run search -- <kw>    # Search events, memories, reports, attachments
 npm run export            # Export full portable archive
-npm run doctor            # Run data health check (13 checks)
+npm run doctor            # Run data health check (17 checks)
 npm run connector         # Run Remi Connector verification
-npm run connector:degradation  # Test service-unavailable behavior
 npm run capture-demo      # Run capture-to-inbox smoke test
-npm test                  # Run automated test suite
+npm test                  # Run automated test suite (229 tests)
 npm run build             # TypeScript compile
 ```
 
@@ -146,11 +174,17 @@ npm run build             # TypeScript compile
 v0.2: Events (archive)
 v0.3: Events → Memories → Context (AI-readable)
 v0.4: Events → Memories → Context → Service (AI-queryable)
-v0.5: Events → Memories → Context → Service → Connector (AI-consumable)
-v0.6: Events → ... → Connector → Protocol (grounded, auditable)
-v0.7: Events → ... → Protocol → Adapter (pluggable LLM, cloud-validated)
+v0.5: Events → ... → Connector (AI-consumable)
+v0.6: Events → ... → Protocol (grounded, auditable)
+v0.7: Events → ... → Adapter (pluggable LLM)
 v0.9: Events → ... + Capture API (Remi writes to inbox)
-v1.0: Events → ... + Sync + Doctor v1.0 + Export (self-use hardened)
+v1.0: Events → ... + Sync + Doctor + Export (self-use hardened)
+v1.1: Events → ... + Image Drafts + OCR (asset intake pipeline)
+v1.3: Events → ... + Provenance (source/evidence/confidence)
+v1.4: Events → ... + Review UI (web-based confirmation)
+v1.5: Events → ... + Daily Flow (dashboard, quick capture, filters)
+v1.7: Events → ... + OCR Hardening (tesseract, PDF scan fallback)
+v1.8: Events → ... + Web Sync + Trial Tracker
 ```
 
 ### Data Flow
@@ -242,21 +276,33 @@ Service runs on `http://localhost:3456`.
 | `/api/ai/context` | GET | Remi context pack (JSON or markdown) |
 | `/api/ai/memories` | GET | Memory records (filterable by importance) |
 | `/api/ai/search?q=` | GET | Search memories and events |
-| `/api/ai/answer` | POST | Grounded answer with sources |
+| `/api/ai/ask` | POST | Grounded answer with sources |
 | `/api/ai/capture` | POST | Capture note to inbox (requires confirmation) |
 | `/api/ai/stage` | GET | Current baby stage (孕期/已出生) |
 | `/api/ai/rebuild` | POST | Rebuild memory + context |
+| `/api/ai/drafts/pending` | GET | Pending drafts list |
+| `/api/ai/drafts/:id/confirm` | POST | Confirm a draft |
+| `/api/ai/drafts/:id/reject` | POST | Reject a draft |
+| `/api/ai/drafts/:id/enrich` | POST | Enrich draft with VLM |
+| `/api/ai/drafts/chat` | POST | Draft management chat interface |
 
 ### Owner-Facing Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/health` | GET | System health |
+| `/api/dashboard` | GET | Dashboard stats (pending, confirmed) |
+| `/api/capture` | POST | Quick capture from Review page |
+| `/api/sync` | POST | Run full sync pipeline |
 | `/api/profile` | GET | Baby profile |
 | `/api/events` | GET | All events (timeline) |
-| `/api/search?q=` | GET | Full-text search |
+| `/api/memories` | GET | All memory records |
 | `/api/stats` | GET | Event/attachment counts |
 | `/api/attachments` | GET | Attachment registry |
+| `/api/drafts/pending` | GET | Pending drafts list |
+| `/api/drafts/:id/confirm` | POST | Confirm a draft |
+| `/api/drafts/:id/reject` | POST | Reject a draft |
+| `/api/trial` | GET | Trial metrics (today + summary) |
+| `/api/trial/record` | POST | Record today's trial metrics |
 
 ### Capture API
 
@@ -277,12 +323,12 @@ Privacy: { "ok": false, "error": "privacy_blocked" }
 Stage:   { "ok": false, "error": "stage_guardrail", "message": "..." }
 ```
 
-## Doctor Health Check (v1.0)
+## Doctor Health Check (v1.9)
 
-13 automated checks:
+17 automated checks:
 
 ```
-  Remi Family Memory — Health Check (v1.0)
+  Remi Family Memory — Health Check (v1.9)
   ==========================================
 
   [PASS] Event store         — N events loaded
@@ -298,8 +344,12 @@ Stage:   { "ok": false, "error": "stage_guardrail", "message": "..." }
   [PASS] Processed notes     — N note(s) in processed archive
   [PASS] Privacy boundary    — blocked_from_ai never enters AI-safe layer
   [PASS] Export directory    — Writable
+  [PASS] Draft registry      — Consistent
+  [PASS] OCR sidecars        — All present
+  [PASS] Provenance          — All memories have source fields
+  [PASS] Confirmed gate      — No unconfirmed content in memories
 
-  Summary: 13 PASS, 0 WARN, 0 FAIL
+  Summary: 17 PASS, 0 WARN, 0 FAIL
 ```
 
 ## Directory Structure
@@ -313,23 +363,27 @@ remi-family-memory/
 │   ├── store.ts           # Event store (read/write)
 │   ├── scanner.ts         # Notes inbox scanner
 │   ├── attachments.ts     # Assets scanner + registry
+│   ├── drafts.ts          # Draft registry (pending/confirmed/rejected)
+│   ├── ocr.ts             # OCR extractors (pdftotext, tesseract, pdf-scan)
+│   ├── draft_enrichment.ts # VLM draft enrichment
 │   ├── profile.ts         # Baby profile + gestational age
 │   ├── memory.ts          # Event → MemoryRecord builder
 │   ├── context.ts         # Remi context pack generator
 │   ├── report.ts          # Monthly report generator
 │   ├── search.ts          # Full-text search
 │   ├── export.ts          # Full archive export
-│   ├── doctor.ts          # Data health check (13 checks)
+│   ├── doctor.ts          # Data health check (17 checks)
 │   ├── capture.ts         # Capture API (intent/privacy/write)
 │   ├── sync.ts            # Sync pipeline (scan→memory→context→doctor)
+│   ├── trial.ts           # Trial metrics tracker
 │   ├── server.ts          # Local Memory Service (Express)
 │   ├── connector.ts       # Remi Connector client
-│   ├── connector-demo.ts  # Connector verification
-│   ├── capture-demo.ts    # Capture smoke test
+│   ├── remi-adapter.ts    # Remi Memory Adapter (ask endpoint)
 │   ├── adapters/          # LLM Adapter layer
-│   ├── tests/             # Automated tests
+│   ├── tests/             # Automated tests (229 tests)
 │   └── cli.ts             # CLI entry point
-├── web/                   # Timeline dashboard
+├── web/
+│   └── review.html        # Review page (dashboard, drafts, capture)
 ├── data/
 │   ├── inbox/notes/       # Drop zone: markdown notes
 │   ├── inbox/assets/      # Drop zone: media files
@@ -340,6 +394,7 @@ remi-family-memory/
 │   ├── profile/           # Baby profile
 │   ├── processed/notes/   # Processed inbox files
 │   ├── reports/           # Monthly reports
+│   ├── trial/             # Trial metrics log
 │   └── exports/           # Portable exports
 ├── docs/                  # Technical docs
 ├── package.json
@@ -372,12 +427,20 @@ remi-family-memory/
 - v0.9.2: Capture Safety (stage guardrail, lifecycle metadata)
 - v0.9.3: Real Conversation Acceptance (8 scenarios verified)
 - v1.0: Self-use Hardening (sync, doctor v1.0, export, README)
+- v1.1: Image Draft MVP (recursive asset scan, VLM enrichment, parent-confirmed facts)
+- v1.3: Provenance Model (source/evidence/confidence on every memory)
+- v1.4: Review UI (web-based draft confirmation page)
+- v1.5: Daily Flow (dashboard, quick capture, filters, web sync)
+- v1.7: OCR Hardening (tesseract chi_sim+eng, PDF scan fallback)
+- v1.8: Web Sync + Trial Tracker (metrics, streak, daily report)
+- v1.9: Documentation + stability (229 tests, 17 doctor checks)
 
 ### Future
 
 - Local LLM integration (Ollama, llama.cpp — true local-first AI)
 - Photo EXIF extraction
 - Voice memo transcription
+- NAS / Docker deployment
 
 ## License
 
