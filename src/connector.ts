@@ -1,4 +1,5 @@
-import type { MemoryRecord, MemoryImportance, MemoryProvenance } from './types.js'
+import { EVENT_TYPE_LABELS } from './types.js'
+import type { BabyEventType, MemoryRecord, MemoryImportance, MemoryProvenance } from './types.js'
 import { createAdapter } from './adapters/index.js'
 import type { LLMAdapter, EvidencePayload, EvidencePayloadItem } from './adapters/index.js'
 import type { ResultSource } from './adapters/types.js'
@@ -393,7 +394,7 @@ export class RemiConnector {
     }
 
     for (const m of this.context.highMemories) {
-      const searchable = [m.title, m.summary].join(' ')
+      const searchable = [eventTypeSearchTerms(m.type), m.title, m.summary].join(' ')
       if (containsAny(searchable.toLowerCase(), keywords)) {
         items.push({
           source: 'context',
@@ -466,6 +467,11 @@ function extractKeywords(question: string): string[] {
 
 function containsAny(text: string, keywords: string[]): boolean {
   return keywords.some((kw) => text.includes(kw.toLowerCase()))
+}
+
+function eventTypeSearchTerms(type: string): string {
+  const label = EVENT_TYPE_LABELS[type as BabyEventType]
+  return [type, label || ''].join(' ')
 }
 
 export function formatProvenanceNote(provenances: MemoryProvenance[]): string | undefined {

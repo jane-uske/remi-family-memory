@@ -58,26 +58,26 @@ export class DeterministicAdapter implements LLMAdapter {
     if (question.includes('胎动')) {
       const fetalItem = items.find((e) => e.title?.includes('胎动'))
       if (fetalItem) {
-        return `根据家庭记忆记录（${fetalItem.date}）：${fetalItem.snippet}`
+        return formatRecordAnswer(fetalItem)
       }
     }
 
     if (question.includes('孕检')) {
-      const checkupItem = items.find((e) => e.title?.includes('孕检'))
+      const checkupItem = items.find((e) => isPregnancyCheckupEvidence(e.title, e.snippet))
       if (checkupItem) {
-        return `根据家庭记忆记录（${checkupItem.date}）：${checkupItem.title}。${checkupItem.snippet}`
+        return formatRecordAnswer(checkupItem)
       }
     }
 
     if (question.includes('记忆系统') || question.includes('家庭记忆')) {
       const systemItem = items.find((e) => e.title?.includes('家庭记忆'))
       if (systemItem) {
-        return `根据家庭记忆记录（${systemItem.date}）：${systemItem.title}。${systemItem.snippet}`
+        return formatRecordAnswer(systemItem)
       }
     }
 
     const best = items[0]
-    return `根据家庭记忆记录（${best.date}）：${best.title}。${best.snippet}`
+    return formatRecordAnswer(best)
   }
 
   private buildPartialAnswer(items: LLMInput['evidence']['items']): string {
@@ -117,4 +117,25 @@ function toSourceRef(item: LLMInput['evidence']['items'][number]): SourceRef {
     date: item.date,
     title: item.title,
   }
+}
+
+function isPregnancyCheckupEvidence(title = '', snippet = ''): boolean {
+  return /孕检|产检|超声|产前筛查|NT|胎心|头臀径/.test(`${title} ${snippet}`)
+}
+
+function formatRecordAnswer(item: LLMInput['evidence']['items'][number]): string {
+  const title = item.title?.trim() || ''
+  const snippet = item.snippet.trim()
+  const detail = collapseRepeatedTitle(
+    snippet.includes(title) ? snippet : [title, snippet].filter(Boolean).join('。'),
+    title,
+  )
+  return `根据家庭记忆记录（${item.date}）：${detail}`
+}
+
+function collapseRepeatedTitle(text: string, title: string): string {
+  if (!title) return text
+  const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const repeated = new RegExp(`(?:${escaped}[\\s。；;，,]*){2,}`, 'g')
+  return text.replace(repeated, title)
 }

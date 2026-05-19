@@ -157,6 +157,36 @@ describe('v0.7: Deterministic adapter non-regression', () => {
     assert.ok(result.sourceRefs.length > 0)
     assert.equal(result.sourceRefs[0].memoryId, 'mem-001')
   })
+
+  it('does not repeat a pregnancy checkup record when title and snippet overlap', async () => {
+    const { DeterministicAdapter } = await import('../adapters/index.js')
+    const adapter = new DeterministicAdapter()
+    const title = '13周早孕期超声产前筛查'
+    const result = await adapter.generate({
+      question: '最近一次孕检是什么时候？',
+      evidence: {
+        query: '孕检',
+        items: [{
+          source: 'memory',
+          memoryId: 'mem-ultrasound-001',
+          sourceEventId: 'ultrasound-001',
+          date: '2026-05-12',
+          title,
+          snippet: `${title}。${title} 头臀径 6.7cm，胎心 159次/分，NT 1.3mm。`,
+          importance: 'high',
+        }],
+        fromContext: false,
+        fromSearch: true,
+        collectedAt: new Date().toISOString(),
+      },
+      promptContract: 'grounded_answer_v1',
+    })
+
+    const occurrences = result.answer.split(title).length - 1
+    assert.equal(occurrences, 1, 'answer should not repeat the same checkup title')
+    assert.ok(result.answer.includes('2026-05-12'), 'answer should keep the record date')
+    assert.ok(result.answer.includes('NT 1.3mm'), 'answer should keep useful checkup facts')
+  })
 })
 
 // --- Cloud Adapter Payload Safety ---

@@ -57,6 +57,23 @@ const NORMAL_EVENT: BabyEvent = {
   updatedAt: '2026-05-15T00:00:00.000Z',
 }
 
+const ULTRASOUND_CHECKUP_EVENT: BabyEvent = {
+  id: 'ultrasound-checkup-test-001',
+  childId: 'baby-001',
+  schemaVersion: SCHEMA_VERSION,
+  occurredAt: '2026-05-12T00:00:00.000Z',
+  type: 'pregnancy_checkup',
+  title: '13周早孕期超声产前筛查',
+  summary: '头臀径 6.7cm，胎心 159次/分，NT 1.3mm。',
+  source: { kind: 'folder', path: 'data/inbox/notes/ultrasound-checkup.md' },
+  people: ['妈妈'],
+  tags: [],
+  sensitivity: 'normal',
+  confirmedByParent: true,
+  createdAt: '2026-05-12T00:00:00.000Z',
+  updatedAt: '2026-05-12T00:00:00.000Z',
+}
+
 const TEST_PROFILE: BabyProfile = {
   babyId: 'baby-001',
   nickname: '小宝',
@@ -78,7 +95,7 @@ function setupFixtures() {
   mkdirSync(CONTEXT_DIR, { recursive: true })
   mkdirSync(REPORTS_DIR, { recursive: true })
 
-  writeFileSync(EVENTS_FILE, JSON.stringify([BLOCKED_EVENT, NORMAL_EVENT], null, 2), 'utf-8')
+  writeFileSync(EVENTS_FILE, JSON.stringify([BLOCKED_EVENT, NORMAL_EVENT, ULTRASOUND_CHECKUP_EVENT], null, 2), 'utf-8')
   writeFileSync(PROFILE_FILE, JSON.stringify(TEST_PROFILE, null, 2), 'utf-8')
 }
 
@@ -176,6 +193,22 @@ describe('Privacy: blocked_from_ai filtering', () => {
     const results = search('孕检')
     const normalResult = results.find((r) => r.title === NORMAL_EVENT.title)
     assert.ok(normalResult, 'normal events should still be searchable')
+  })
+
+  it('search() finds pregnancy_checkup events by type label even when title has no 孕检 literal', async () => {
+    const { search, aiSearch } = await import('../search.js')
+
+    const ownerResults = search('孕检')
+    const aiResults = aiSearch('孕检')
+
+    assert.ok(
+      ownerResults.some((r) => r.title === ULTRASOUND_CHECKUP_EVENT.title),
+      'owner search should find pregnancy_checkup by type label',
+    )
+    assert.ok(
+      aiResults.some((r) => r.title === ULTRASOUND_CHECKUP_EVENT.title),
+      'AI search should find pregnancy_checkup by type label',
+    )
   })
 })
 

@@ -15,7 +15,7 @@ export function search(keyword: string): SearchResult[] {
 
   const events = listOwnerVisibleEvents()
   for (const e of events) {
-    const searchable = [e.title, e.summary || '', e.tags.join(' '), e.people.join(' ')].join(' ')
+    const searchable = eventSearchableText(e)
     if (searchable.toLowerCase().includes(kw)) {
       results.push({
         type: 'event',
@@ -30,7 +30,7 @@ export function search(keyword: string): SearchResult[] {
 
   const memories = loadMemories()
   for (const m of memories) {
-    const searchable = [m.title, m.summary, m.facts.join(' '), m.tags.join(' '), m.people.join(' ')].join(' ')
+    const searchable = memorySearchableText(m)
     if (searchable.toLowerCase().includes(kw)) {
       results.push({
         type: 'memory',
@@ -85,7 +85,7 @@ export function aiSearch(keyword: string): SearchResult[] {
 
   const events = listAISafeEvents()
   for (const e of events) {
-    const searchable = [e.title, e.summary || '', e.tags.join(' '), e.people.join(' ')].join(' ')
+    const searchable = eventSearchableText(e)
     if (searchable.toLowerCase().includes(kw)) {
       results.push({
         type: 'event',
@@ -100,7 +100,7 @@ export function aiSearch(keyword: string): SearchResult[] {
 
   const memories = loadMemories()
   for (const m of memories) {
-    const searchable = [m.title, m.summary, m.facts.join(' '), m.tags.join(' '), m.people.join(' ')].join(' ')
+    const searchable = memorySearchableText(m)
     if (searchable.toLowerCase().includes(kw)) {
       results.push({
         type: 'memory',
@@ -116,6 +116,32 @@ export function aiSearch(keyword: string): SearchResult[] {
   }
 
   return results
+}
+
+function eventSearchableText(e: ReturnType<typeof listOwnerVisibleEvents>[number]): string {
+  const eventType = EVENT_TYPE_LABELS[e.type] || e.type
+  return [
+    eventType,
+    e.type,
+    e.title,
+    e.summary || '',
+    (e.facts || []).join(' '),
+    e.tags.join(' '),
+    e.people.join(' '),
+  ].join(' ')
+}
+
+function memorySearchableText(m: ReturnType<typeof loadMemories>[number]): string {
+  const eventType = EVENT_TYPE_LABELS[m.type] || m.type
+  return [
+    eventType,
+    m.type,
+    m.title,
+    m.summary,
+    m.facts.join(' '),
+    m.tags.join(' '),
+    m.people.join(' '),
+  ].join(' ')
 }
 
 function extractContext(text: string, keyword: string, windowSize = 60): string {
