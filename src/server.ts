@@ -54,6 +54,7 @@ function aiAuthMiddleware(req: Request, res: Response, next: NextFunction): void
 export function startServer(port = 3456) {
   const app = express()
 
+  app.use(express.json())
   app.use(express.static(path.resolve('web')))
 
   // ============================================================
@@ -94,6 +95,46 @@ export function startServer(port = 3456) {
   app.get('/api/attachments', (_req, res) => {
     const attachments = loadAttachments()
     res.json(attachments)
+  })
+
+  app.get('/api/memories', (_req, res) => {
+    const memories = loadMemories()
+    res.json({ total: memories.length, memories })
+  })
+
+  app.get('/api/drafts/pending', (_req, res) => {
+    const drafts = loadPendingDrafts()
+    res.json({ total: drafts.length, drafts })
+  })
+
+  app.post('/api/drafts/:draftId/confirm', (req, res) => {
+    const { draftId } = req.params
+    const { title, date, type, summary, tags } = req.body || {}
+    const overrides: Record<string, unknown> = {}
+    if (title) overrides.title = title
+    if (date) overrides.date = date
+    if (type) overrides.type = type
+    if (summary) overrides.summary = summary
+    if (tags) overrides.tags = tags
+
+    const result = confirmDraft(draftId, Object.keys(overrides).length > 0 ? overrides as any : undefined)
+    if (!result.ok) {
+      const status = result.error === 'not_found' ? 404 : 400
+      res.status(status).json(result)
+      return
+    }
+    res.json(result)
+  })
+
+  app.post('/api/drafts/:draftId/reject', (req, res) => {
+    const { draftId } = req.params
+    const result = rejectDraft(draftId)
+    if (!result.ok) {
+      const status = result.error === 'not_found' ? 404 : 400
+      res.status(status).json(result)
+      return
+    }
+    res.json(result)
   })
 
   // ============================================================
@@ -200,8 +241,6 @@ export function startServer(port = 3456) {
       res.status(500).json({ ok: false, error: String(e) })
     }
   })
-
-  app.use(express.json())
 
   app.get('/api/ai/stage', (_req, res) => {
     const stage = getCurrentStage()
@@ -351,6 +390,7 @@ export function startServer(port = 3456) {
     console.log()
     console.log('  Web (owner-facing):')
     console.log(`    Timeline:    http://localhost:${port}/`)
+    console.log(`    Review:      http://localhost:${port}/review.html`)
     console.log(`    Profile:     http://localhost:${port}/profile.html`)
     console.log()
     console.log(`  AI API (token: ${tokenSet ? 'required' : 'open (set FAMILY_MEMORY_TOKEN to protect)'}):`)
@@ -369,6 +409,10 @@ export function startServer(port = 3456) {
     console.log()
     console.log('  Owner API (no auth, web dashboard):')
     console.log(`    Events:      GET  /api/events`)
+    console.log(`    Memories:    GET  /api/memories`)
+    console.log(`    Drafts:      GET  /api/drafts/pending`)
+    console.log(`    Confirm:     POST /api/drafts/:id/confirm`)
+    console.log(`    Reject:      POST /api/drafts/:id/reject`)
     console.log(`    Profile:     GET  /api/profile`)
     console.log(`    Stats:       GET  /api/stats`)
     console.log(`    Attachments: GET  /api/attachments`)

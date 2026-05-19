@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Review - Remi Family Memory</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      background: #faf8f5;
+      color: #3d3530;
+      line-height: 1.6;
+    }
+
+    header {
+      background: linear-gradient(135deg, #f7e8d5 0%, #fce4ec 100%);
+      padding: 2rem 2rem 1.5rem;
+      border-bottom: 1px solid #f0dcc8;
+    }
+
+    header h1 {
+      font-size: 1.6rem;
+      font-weight: 600;
+      color: #5d4037;
+      text-align: center;
+    }
+
+    header .subtitle {
+      text-align: center;
+      color: #8d6e63;
+      font-size: 0.9rem;
+      margin-top: 0.3rem;
+    }
+
+    nav {
+      display: flex;
+      justify-content: center;
+      gap: 1.5rem;
+      margin-top: 1rem;
+    }
+
+    nav a {
+      color: #5d4037;
+      text-decoration: none;
+      font-size: 0.85rem;
+      padding: 0.3rem 0.8rem;
+      border-radius: 6px;
+      transition: background 0.2s;
+    }
+
+    nav a:hover { background: rgba(93, 64, 55, 0.08); }
+    nav a.active { background: rgba(93, 64, 55, 0.12); font-weight: 600; }
+
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 1.5rem 1.5rem 4rem;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 0;
+      margin-bottom: 1.5rem;
+      border-bottom: 2px solid #f0dcc8;
+    }
+
+    .tab {
+      padding: 0.7rem 1.2rem;
+      font-size: 0.9rem;
+      color: #8d6e63;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      transition: all 0.2s;
+    }
+
+    .tab:hover { color: #5d4037; }
+    .tab.active {
+      color: #5d4037;
+      font-weight: 600;
+      border-bottom-color: #5d4037;
+    }
+
+    .tab .count {
+      display: inline-block;
+      background: #f0dcc8;
+      color: #5d4037;
+      font-size: 0.7rem;
+      padding: 0.1em 0.5em;
+      border-radius: 10px;
+      margin-left: 0.4rem;
+      font-weight: 600;
+    }
+
+    .tab.active .count { background: #5d4037; color: #fff; }
+
+    .section { display: none; }
+    .section.active { display: block; }
+
+    .empty {
+      text-align: center;
+      padding: 3rem 2rem;
+      color: #a1887f;
+    }
+
+    /* Memory cards */
+    .memory-card {
+      background: #fff;
+      border: 1px solid #efe5db;
+      border-radius: 12px;
+      padding: 1.1rem 1.3rem;
+      margin-bottom: 0.85rem;
+      box-shadow: 0 1px 3px rgba(93, 64, 55, 0.06);
+    }
+
+    .memory-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.3rem;
+    }
+
+    .memory-date {
+      font-size: 0.78rem;
+      color: #a1887f;
+    }
+
+    .memory-type {
+      display: inline-block;
+      font-size: 0.68rem;
+      padding: 0.12em 0.55em;
+      border-radius: 999px;
+      font-weight: 500;
+      background: #f5f0eb;
+      color: #8d6e63;
+    }
+
+    .memory-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #3e2723;
+      margin-bottom: 0.3rem;
+    }
+
+    .memory-summary {
+      font-size: 0.87rem;
+      color: #6d5d53;
+      margin-bottom: 0.5rem;
+    }
+
+    .memory-facts {
+      margin: 0.5rem 0;
+      padding: 0.5rem 0.8rem;
+      background: #faf5f0;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      color: #5d4037;
+    }
+
+    .memory-facts li {
+      list-style: none;
+      padding: 0.15rem 0;
+    }
+
+    .memory-facts li::before {
+      content: '·';
+      margin-right: 0.5rem;
+      color: #a1887f;
+    }
+
+    .provenance-note {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-size: 0.72rem;
+      color: #8d6e63;
+      background: #f5f0eb;
+      padding: 0.2em 0.6em;
+      border-radius: 4px;
+      margin-top: 0.4rem;
+    }
+
+    .provenance-note .icon { font-size: 0.8rem; }
+
+    .importance-badge {
+      display: inline-block;
+      font-size: 0.65rem;
+      padding: 0.1em 0.45em;
+      border-radius: 4px;
+      font-weight: 600;
+      margin-left: 0.3rem;
+    }
+
+    .importance-core { background: #fff3e0; color: #e65100; }
+    .importance-high { background: #fce4ec; color: #c2185b; }
+    .importance-medium { background: #e8f5e9; color: #2e7d32; }
+    .importance-low { background: #eceff1; color: #607d8b; }
+
+    /* Draft cards */
+    .draft-card {
+      background: #fff;
+      border: 1px solid #ffe0b2;
+      border-left: 4px solid #ff9800;
+      border-radius: 12px;
+      padding: 1.1rem 1.3rem;
+      margin-bottom: 0.85rem;
+      box-shadow: 0 1px 3px rgba(93, 64, 55, 0.06);
+    }
+
+    .draft-status {
+      display: inline-block;
+      font-size: 0.68rem;
+      padding: 0.15em 0.55em;
+      border-radius: 999px;
+      font-weight: 600;
+      background: #fff3e0;
+      color: #e65100;
+    }
+
+    .draft-files {
+      font-size: 0.8rem;
+      color: #8d6e63;
+      margin-top: 0.3rem;
+    }
+
+    .draft-enrichment {
+      font-size: 0.78rem;
+      color: #4caf50;
+      margin-top: 0.3rem;
+    }
+
+    .draft-actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.8rem;
+    }
+
+    .btn {
+      padding: 0.4rem 1rem;
+      font-size: 0.82rem;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+
+    .btn-confirm {
+      background: #4caf50;
+      color: #fff;
+    }
+
+    .btn-confirm:hover { background: #388e3c; }
+
+    .btn-reject {
+      background: #fff;
+      color: #8d6e63;
+      border: 1px solid #e0d0c0;
+    }
+
+    .btn-reject:hover { background: #faf5f0; }
+
+    .btn-disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .summary-input {
+      width: 100%;
+      margin-top: 0.5rem;
+      padding: 0.5rem 0.7rem;
+      border: 1px solid #e0d0c0;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-family: inherit;
+      resize: vertical;
+      min-height: 2.5rem;
+    }
+
+    .summary-input:focus {
+      outline: none;
+      border-color: #8d6e63;
+    }
+
+    .stage-label {
+      font-size: 0.75rem;
+      color: #a1887f;
+      background: #f5f0eb;
+      padding: 0.15em 0.5em;
+      border-radius: 4px;
+      margin-left: 0.3rem;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 2rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #3e2723;
+      color: #fff;
+      padding: 0.7rem 1.5rem;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+      z-index: 100;
+    }
+
+    .toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Remi Family Memory</h1>
+    <p class="subtitle">A local-first family memory system</p>
+    <nav>
+      <a href="/">Timeline</a>
+      <a href="/review.html" class="active">Review</a>
+      <a href="/profile.html">Profile</a>
+    </nav>
+  </header>
+
+  <div class="container">
+    <div class="tabs">
+      <div class="tab active" data-tab="pending">待确认 <span class="count" id="pending-count">0</span></div>
+      <div class="tab" data-tab="confirmed">已确认记忆 <span class="count" id="confirmed-count">0</span></div>
+    </div>
+
+    <div id="pending-section" class="section active"></div>
+    <div id="confirmed-section" class="section"></div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const TYPE_LABELS = {
+      pregnancy_checkup: '孕检', fetal_movement: '胎动', birth: '出生',
+      milestone: '里程碑', parent_note: '父母手记', family_event: '家庭事件',
+      medical_record: '医疗记录', vaccine: '疫苗', growth_metric: '成长指标',
+      photo_memory: '照片记忆', voice_memory: '语音记忆', video: '视频',
+      system_event: '系统事件',
+    }
+
+    function formatDate(iso) {
+      if (!iso) return '未知日期'
+      const d = new Date(iso)
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+    }
+
+    function showToast(msg) {
+      const el = document.getElementById('toast')
+      el.textContent = msg
+      el.classList.add('show')
+      setTimeout(() => el.classList.remove('show'), 2500)
+    }
+
+    // --- Tabs ---
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'))
+        document.querySelectorAll('.section').forEach(s => s.classList.remove('active'))
+        tab.classList.add('active')
+        document.getElementById(tab.dataset.tab + '-section').classList.add('active')
+      })
+    })
+
+    // --- Provenance ---
+    function renderProvenance(prov) {
+      if (!prov) return ''
+      const parts = []
+      if (prov.confidence === 'confirmed_by_parent') parts.push('家长已确认')
+      if (prov.vlmAssisted && prov.ocrAssisted) parts.push('OCR + VLM 辅助整理')
+      else if (prov.vlmAssisted) parts.push('VLM 辅助整理')
+      else if (prov.ocrAssisted) parts.push('OCR 辅助提取')
+      if (prov.confirmedAt) parts.push(formatDate(prov.confirmedAt) + ' 确认')
+      if (parts.length === 0) return ''
+      return `<div class="provenance-note"><span class="icon">&#x2713;</span> ${parts.join(' · ')}</div>`
+    }
+
+    // --- Confirmed Memories ---
+    async function loadMemories() {
+      try {
+        const res = await fetch('/api/memories')
+        const data = await res.json()
+        const memories = data.memories || []
+        document.getElementById('confirmed-count').textContent = memories.length
+
+        if (memories.length === 0) {
+          document.getElementById('confirmed-section').innerHTML = '<div class="empty">还没有已确认的记忆。确认待审草稿后会出现在这里。</div>'
+          return
+        }
+
+        const sorted = memories.sort((a, b) => b.date.localeCompare(a.date))
+        let html = ''
+        for (const m of sorted) {
+          const factsHtml = m.facts && m.facts.length > 0
+            ? `<ul class="memory-facts">${m.facts.slice(0, 5).map(f => `<li>${escHtml(f)}</li>`).join('')}</ul>`
+            : ''
+          html += `
+            <div class="memory-card">
+              <div class="memory-header">
+                <span class="memory-date">${m.date}</span>
+                <span class="memory-type">${TYPE_LABELS[m.type] || m.type}</span>
+                <span class="importance-badge importance-${m.importance}">${m.importance}</span>
+              </div>
+              <div class="memory-title">${escHtml(m.title)}</div>
+              <div class="memory-summary">${escHtml(m.summary || '')}</div>
+              ${factsHtml}
+              ${renderProvenance(m.provenance)}
+            </div>
+          `
+        }
+        document.getElementById('confirmed-section').innerHTML = html
+      } catch (e) {
+        document.getElementById('confirmed-section').innerHTML = '<div class="empty">加载失败</div>'
+      }
+    }
+
+    // --- Pending Drafts ---
+    async function loadDrafts() {
+      try {
+        const res = await fetch('/api/drafts/pending')
+        const data = await res.json()
+        const drafts = data.drafts || []
+        document.getElementById('pending-count').textContent = drafts.length
+
+        if (drafts.length === 0) {
+          document.getElementById('pending-section').innerHTML = '<div class="empty">没有待确认的草稿。上传照片或文件后会出现在这里。</div>'
+          return
+        }
+
+        let html = ''
+        for (const d of drafts) {
+          const title = d.inferredTitle || d.originalFilenames.join(', ')
+          const dateStr = d.inferredDate || '未知日期'
+          const typeStr = d.inferredType ? (TYPE_LABELS[d.inferredType] || d.inferredType) : '待识别'
+          const files = d.originalFilenames.join(', ')
+          const enriched = d.extractedFacts && d.extractedFacts.length > 0
+          const enrichHtml = enriched
+            ? `<div class="draft-enrichment">&#x2713; VLM 已识别：${d.extractedFacts.slice(0, 3).map(escHtml).join('、')}</div>`
+            : ''
+
+          html += `
+            <div class="draft-card" id="draft-${d.draftId}">
+              <div class="memory-header">
+                <span class="memory-date">${dateStr}</span>
+                <span class="draft-status">待确认</span>
+                <span class="memory-type">${typeStr}</span>
+              </div>
+              <div class="memory-title">${escHtml(title)}</div>
+              <div class="draft-files">文件：${escHtml(files)}</div>
+              ${enrichHtml}
+              <textarea class="summary-input" id="summary-${d.draftId}" placeholder="可补充摘要（可选）"></textarea>
+              <div class="draft-actions">
+                <button class="btn btn-confirm" onclick="confirmDraft('${d.draftId}')">确认</button>
+                <button class="btn btn-reject" onclick="rejectDraft('${d.draftId}')">跳过</button>
+              </div>
+            </div>
+          `
+        }
+        document.getElementById('pending-section').innerHTML = html
+      } catch (e) {
+        document.getElementById('pending-section').innerHTML = '<div class="empty">加载失败</div>'
+      }
+    }
+
+    async function confirmDraft(draftId) {
+      const summaryEl = document.getElementById(`summary-${draftId}`)
+      const summary = summaryEl ? summaryEl.value.trim() : ''
+      const body = summary ? { summary } : {}
+
+      try {
+        const res = await fetch(`/api/drafts/${draftId}/confirm`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        if (res.ok) {
+          showToast('已确认，运行 npm run sync 后进入正式记忆')
+          const card = document.getElementById(`draft-${draftId}`)
+          if (card) card.style.opacity = '0.4'
+          setTimeout(() => { loadDrafts(); loadMemories() }, 800)
+        } else {
+          const err = await res.json()
+          showToast(`确认失败：${err.message || err.error}`)
+        }
+      } catch (e) {
+        showToast('网络错误')
+      }
+    }
+
+    async function rejectDraft(draftId) {
+      try {
+        const res = await fetch(`/api/drafts/${draftId}/reject`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+        })
+        if (res.ok) {
+          showToast('已跳过')
+          const card = document.getElementById(`draft-${draftId}`)
+          if (card) card.style.opacity = '0.4'
+          setTimeout(loadDrafts, 800)
+        } else {
+          const err = await res.json()
+          showToast(`拒绝失败：${err.message || err.error}`)
+        }
+      } catch (e) {
+        showToast('网络错误')
+      }
+    }
+
+    function escHtml(str) {
+      const div = document.createElement('div')
+      div.textContent = str
+      return div.innerHTML
+    }
+
+    loadDrafts()
+    loadMemories()
+  </script>
+</body>
+</html>
