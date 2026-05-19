@@ -1,0 +1,20 @@
+{
+  "startDate": "2026-05-19",
+  "days": [
+    {
+      "date": "2026-05-19",
+      "assetsImported": 5,
+      "draftsCreated": 4,
+      "draftsConfirmed": 2,
+      "draftsRejected": 0,
+      "draftsNeedingMajorEdit": 0,
+      "ocrFailures": 0,
+      "ocrErrors": [],
+      "memoriesTotal": 7,
+      "pendingTotal": 3,
+      "confirmedToday": 4,
+      "unconfirmedLeakDetected": false,
+      "notes": ""
+    }
+  ]
+}

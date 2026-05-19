@@ -311,6 +311,177 @@
     }
 
     .toast.show { opacity: 1; }
+
+    /* v1.5: Dashboard panel */
+    .dashboard {
+      background: linear-gradient(135deg, #fff8e1 0%, #fce4ec 100%);
+      border: 1px solid #ffe0b2;
+      border-radius: 12px;
+      padding: 1rem 1.3rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .dashboard-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #5d4037;
+      margin-bottom: 0.6rem;
+    }
+
+    .dashboard-stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+    }
+
+    .stat-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-size: 0.78rem;
+      padding: 0.25em 0.7em;
+      border-radius: 999px;
+      background: #fff;
+      border: 1px solid #f0dcc8;
+      color: #5d4037;
+    }
+
+    .stat-chip .num {
+      font-weight: 700;
+      color: #e65100;
+    }
+
+    .stat-chip.ok .num { color: #2e7d32; }
+    .stat-chip.warn .num { color: #e65100; }
+
+    .dashboard-hint {
+      font-size: 0.75rem;
+      color: #a1887f;
+      margin-top: 0.6rem;
+    }
+
+    .dashboard-actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.7rem;
+    }
+
+    .btn-sync {
+      padding: 0.35rem 0.9rem;
+      font-size: 0.78rem;
+      border-radius: 6px;
+      border: 1px solid #8d6e63;
+      background: #fff;
+      color: #5d4037;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+
+    .btn-sync:hover { background: #f5f0eb; }
+    .btn-sync:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-sync.syncing { border-color: #4caf50; color: #4caf50; }
+
+    /* v1.5: Quick capture */
+    .quick-capture {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .quick-capture input {
+      flex: 1;
+      padding: 0.6rem 0.9rem;
+      border: 1px solid #e0d0c0;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      font-family: inherit;
+      background: #fff;
+    }
+
+    .quick-capture input:focus {
+      outline: none;
+      border-color: #8d6e63;
+      box-shadow: 0 0 0 2px rgba(141, 110, 99, 0.1);
+    }
+
+    .quick-capture button {
+      padding: 0.6rem 1.2rem;
+      background: #5d4037;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .quick-capture button:hover { background: #4e342e; }
+    .quick-capture button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* v1.8: Trial stats */
+    .trial-panel {
+      background: #fff;
+      border: 1px solid #e8f5e9;
+      border-left: 4px solid #4caf50;
+      border-radius: 12px;
+      padding: 1rem 1.3rem;
+      margin-bottom: 1.5rem;
+      font-size: 0.8rem;
+    }
+
+    .trial-panel .trial-title {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #2e7d32;
+      margin-bottom: 0.5rem;
+    }
+
+    .trial-stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.3rem 1.5rem;
+      color: #5d4037;
+    }
+
+    .trial-stats-grid .label { color: #8d6e63; }
+    .trial-stats-grid .val { font-weight: 600; text-align: right; }
+
+    .trial-record-btn {
+      margin-top: 0.6rem;
+      padding: 0.3rem 0.8rem;
+      font-size: 0.75rem;
+      border-radius: 5px;
+      border: 1px solid #4caf50;
+      background: #fff;
+      color: #2e7d32;
+      cursor: pointer;
+    }
+
+    .trial-record-btn:hover { background: #e8f5e9; }
+
+    /* v1.5: Filter chips */
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin-bottom: 1rem;
+    }
+
+    .filter-chip {
+      font-size: 0.75rem;
+      padding: 0.2em 0.7em;
+      border-radius: 999px;
+      border: 1px solid #e0d0c0;
+      background: #fff;
+      color: #8d6e63;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .filter-chip:hover { border-color: #8d6e63; }
+    .filter-chip.active { background: #5d4037; color: #fff; border-color: #5d4037; }
   </style>
 </head>
 <body>
@@ -325,9 +496,50 @@
   </header>
 
   <div class="container">
+    <!-- v1.5: Today's dashboard -->
+    <div class="dashboard" id="dashboard">
+      <div class="dashboard-title">今日待办</div>
+      <div class="dashboard-stats" id="dashboard-stats">
+        <span class="stat-chip">加载中...</span>
+      </div>
+      <div class="dashboard-hint" id="dashboard-hint"></div>
+      <div class="dashboard-actions">
+        <button class="btn-sync" id="sync-btn" onclick="runSync()">同步刷新记忆</button>
+      </div>
+    </div>
+
+    <!-- v1.5: Quick capture -->
+    <div class="quick-capture">
+      <input type="text" id="capture-input" placeholder="快速记录：一句话记家庭事件..." maxlength="200" />
+      <button id="capture-btn" onclick="quickCapture()">记录</button>
+    </div>
+
+    <!-- v1.8: Trial tracker -->
+    <div class="trial-panel" id="trial-panel" style="display:none;">
+      <div class="trial-title">试用追踪</div>
+      <div class="trial-stats-grid" id="trial-stats"></div>
+      <button class="trial-record-btn" onclick="recordTrialDay()">记录今日</button>
+    </div>
+
     <div class="tabs">
       <div class="tab active" data-tab="pending">待确认 <span class="count" id="pending-count">0</span></div>
       <div class="tab" data-tab="confirmed">已确认记忆 <span class="count" id="confirmed-count">0</span></div>
+    </div>
+
+    <!-- v1.5: Filters for pending -->
+    <div id="pending-filters" class="filters">
+      <span class="filter-chip active" data-filter="all">全部</span>
+      <span class="filter-chip" data-filter="ready">可确认</span>
+      <span class="filter-chip" data-filter="needs-title">缺标题</span>
+      <span class="filter-chip" data-filter="ocr-error">OCR失败</span>
+    </div>
+
+    <!-- v1.5: Filters for confirmed -->
+    <div id="confirmed-filters" class="filters" style="display:none;">
+      <span class="filter-chip active" data-filter="all">全部</span>
+      <span class="filter-chip" data-filter="today">今日</span>
+      <span class="filter-chip" data-filter="vlm">VLM辅助</span>
+      <span class="filter-chip" data-filter="ocr">OCR辅助</span>
     </div>
 
     <div id="pending-section" class="section active"></div>
@@ -365,8 +577,155 @@
         document.querySelectorAll('.section').forEach(s => s.classList.remove('active'))
         tab.classList.add('active')
         document.getElementById(tab.dataset.tab + '-section').classList.add('active')
+        // Toggle filter visibility
+        document.getElementById('pending-filters').style.display = tab.dataset.tab === 'pending' ? 'flex' : 'none'
+        document.getElementById('confirmed-filters').style.display = tab.dataset.tab === 'confirmed' ? 'flex' : 'none'
       })
     })
+
+    // --- v1.5: Dashboard ---
+    async function loadDashboard() {
+      try {
+        const res = await fetch('/api/dashboard')
+        const data = await res.json()
+        const stats = []
+
+        if (data.pending.total > 0) {
+          stats.push(`<span class="stat-chip warn"><span class="num">${data.pending.total}</span> 条待确认</span>`)
+        }
+        if (data.pending.readyToConfirm > 0) {
+          stats.push(`<span class="stat-chip ok"><span class="num">${data.pending.readyToConfirm}</span> 条可直接确认</span>`)
+        }
+        if (data.pending.needsTitle > 0) {
+          stats.push(`<span class="stat-chip warn"><span class="num">${data.pending.needsTitle}</span> 条缺标题</span>`)
+        }
+        if (data.pending.ocrError > 0) {
+          stats.push(`<span class="stat-chip warn"><span class="num">${data.pending.ocrError}</span> 条OCR失败</span>`)
+        }
+        if (data.confirmed.today > 0) {
+          stats.push(`<span class="stat-chip ok"><span class="num">${data.confirmed.today}</span> 条今日已确认</span>`)
+        }
+
+        if (stats.length === 0) {
+          stats.push(`<span class="stat-chip ok"><span class="num">0</span> 待处理，今日已完成</span>`)
+        }
+
+        document.getElementById('dashboard-stats').innerHTML = stats.join('')
+
+        if (data.pending.total > 0) {
+          document.getElementById('dashboard-hint').textContent = `Remi 提醒：你有 ${data.pending.total} 条家庭记忆待确认`
+          document.title = `(${data.pending.total}) Review - Remi Family Memory`
+        } else {
+          document.getElementById('dashboard-hint').textContent = ''
+          document.title = 'Review - Remi Family Memory'
+        }
+      } catch (e) {
+        document.getElementById('dashboard-stats').innerHTML = '<span class="stat-chip">加载失败</span>'
+      }
+    }
+
+    // --- v1.5: Quick Capture ---
+    async function quickCapture() {
+      const input = document.getElementById('capture-input')
+      const btn = document.getElementById('capture-btn')
+      const text = input.value.trim()
+      if (!text) return
+
+      btn.disabled = true
+      try {
+        const res = await fetch('/api/capture', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text }),
+        })
+        const data = await res.json()
+        if (data.ok) {
+          showToast('已记录！运行 npm run sync 后生成记忆')
+          input.value = ''
+          loadDashboard()
+        } else {
+          showToast(data.message || '记录失败')
+        }
+      } catch (e) {
+        showToast('网络错误')
+      } finally {
+        btn.disabled = false
+      }
+    }
+
+    document.getElementById('capture-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.isComposing) quickCapture()
+    })
+
+    // --- v1.6: Sync button ---
+    async function runSync() {
+      const btn = document.getElementById('sync-btn')
+      btn.disabled = true
+      btn.textContent = '同步中...'
+      btn.classList.add('syncing')
+      try {
+        const res = await fetch('/api/sync', { method: 'POST' })
+        const data = await res.json()
+        if (data.ok) {
+          const msg = `已同步：${data.scan.notesAdded} 条新记录，${data.memory.created} 条新记忆`
+          showToast(msg)
+          loadDashboard()
+          loadDrafts()
+          loadMemories()
+        } else {
+          showToast('同步失败：' + (data.error || '未知错误'))
+        }
+      } catch (e) {
+        showToast('网络错误')
+      } finally {
+        btn.disabled = false
+        btn.textContent = '同步刷新记忆'
+        btn.classList.remove('syncing')
+      }
+    }
+
+    // --- v1.5: Filters ---
+    let currentPendingFilter = 'all'
+    let currentConfirmedFilter = 'all'
+    let allDrafts = []
+    let allMemories = []
+
+    document.getElementById('pending-filters').addEventListener('click', (e) => {
+      const chip = e.target.closest('.filter-chip')
+      if (!chip) return
+      document.querySelectorAll('#pending-filters .filter-chip').forEach(c => c.classList.remove('active'))
+      chip.classList.add('active')
+      currentPendingFilter = chip.dataset.filter
+      renderDrafts()
+    })
+
+    document.getElementById('confirmed-filters').addEventListener('click', (e) => {
+      const chip = e.target.closest('.filter-chip')
+      if (!chip) return
+      document.querySelectorAll('#confirmed-filters .filter-chip').forEach(c => c.classList.remove('active'))
+      chip.classList.add('active')
+      currentConfirmedFilter = chip.dataset.filter
+      renderMemories()
+    })
+
+    function filterDrafts(drafts) {
+      switch (currentPendingFilter) {
+        case 'ready': return drafts.filter(d => d.inferredTitle && d.inferredDate)
+        case 'needs-title': return drafts.filter(d => !d.inferredTitle)
+        case 'ocr-error': return drafts.filter(d => d.ocrStatus === 'error')
+        default: return drafts
+      }
+    }
+
+    function filterMemories(memories) {
+      const today = new Date().toISOString().slice(0, 10)
+      switch (currentConfirmedFilter) {
+        case 'today': return memories.filter(m => m.date === today || (m.createdAt && m.createdAt.startsWith(today)))
+        case 'vlm': return memories.filter(m => m.provenance && m.provenance.vlmAssisted)
+        case 'ocr': return memories.filter(m => m.provenance && m.provenance.ocrAssisted)
+        default: return memories
+      }
+    }
 
     // --- Provenance ---
     function renderProvenance(prov) {
@@ -386,38 +745,45 @@
       try {
         const res = await fetch('/api/memories')
         const data = await res.json()
-        const memories = data.memories || []
-        document.getElementById('confirmed-count').textContent = memories.length
-
-        if (memories.length === 0) {
-          document.getElementById('confirmed-section').innerHTML = '<div class="empty">还没有已确认的记忆。确认待审草稿后会出现在这里。</div>'
-          return
-        }
-
-        const sorted = memories.sort((a, b) => b.date.localeCompare(a.date))
-        let html = ''
-        for (const m of sorted) {
-          const factsHtml = m.facts && m.facts.length > 0
-            ? `<ul class="memory-facts">${m.facts.slice(0, 5).map(f => `<li>${escHtml(f)}</li>`).join('')}</ul>`
-            : ''
-          html += `
-            <div class="memory-card">
-              <div class="memory-header">
-                <span class="memory-date">${m.date}</span>
-                <span class="memory-type">${TYPE_LABELS[m.type] || m.type}</span>
-                <span class="importance-badge importance-${m.importance}">${m.importance}</span>
-              </div>
-              <div class="memory-title">${escHtml(m.title)}</div>
-              <div class="memory-summary">${escHtml(m.summary || '')}</div>
-              ${factsHtml}
-              ${renderProvenance(m.provenance)}
-            </div>
-          `
-        }
-        document.getElementById('confirmed-section').innerHTML = html
+        allMemories = data.memories || []
+        document.getElementById('confirmed-count').textContent = allMemories.length
+        renderMemories()
       } catch (e) {
         document.getElementById('confirmed-section').innerHTML = '<div class="empty">加载失败</div>'
       }
+    }
+
+    function renderMemories() {
+      const memories = filterMemories(allMemories)
+      if (memories.length === 0) {
+        const msg = currentConfirmedFilter === 'all'
+          ? '还没有已确认的记忆。确认待审草稿后会出现在这里。'
+          : '没有符合筛选条件的记忆。'
+        document.getElementById('confirmed-section').innerHTML = `<div class="empty">${msg}</div>`
+        return
+      }
+
+      const sorted = memories.sort((a, b) => b.date.localeCompare(a.date))
+      let html = ''
+      for (const m of sorted) {
+        const factsHtml = m.facts && m.facts.length > 0
+          ? `<ul class="memory-facts">${m.facts.slice(0, 5).map(f => `<li>${escHtml(f)}</li>`).join('')}</ul>`
+          : ''
+        html += `
+          <div class="memory-card">
+            <div class="memory-header">
+              <span class="memory-date">${m.date}</span>
+              <span class="memory-type">${TYPE_LABELS[m.type] || m.type}</span>
+              <span class="importance-badge importance-${m.importance}">${m.importance}</span>
+            </div>
+            <div class="memory-title">${escHtml(m.title)}</div>
+            <div class="memory-summary">${escHtml(m.summary || '')}</div>
+            ${factsHtml}
+            ${renderProvenance(m.provenance)}
+          </div>
+        `
+      }
+      document.getElementById('confirmed-section').innerHTML = html
     }
 
     // --- Pending Drafts ---
@@ -425,47 +791,54 @@
       try {
         const res = await fetch('/api/drafts/pending')
         const data = await res.json()
-        const drafts = data.drafts || []
-        document.getElementById('pending-count').textContent = drafts.length
-
-        if (drafts.length === 0) {
-          document.getElementById('pending-section').innerHTML = '<div class="empty">没有待确认的草稿。上传照片或文件后会出现在这里。</div>'
-          return
-        }
-
-        let html = ''
-        for (const d of drafts) {
-          const title = d.inferredTitle || d.originalFilenames.join(', ')
-          const dateStr = d.inferredDate || '未知日期'
-          const typeStr = d.inferredType ? (TYPE_LABELS[d.inferredType] || d.inferredType) : '待识别'
-          const files = d.originalFilenames.join(', ')
-          const enriched = d.extractedFacts && d.extractedFacts.length > 0
-          const enrichHtml = enriched
-            ? `<div class="draft-enrichment">&#x2713; VLM 已识别：${d.extractedFacts.slice(0, 3).map(escHtml).join('、')}</div>`
-            : ''
-
-          html += `
-            <div class="draft-card" id="draft-${d.draftId}">
-              <div class="memory-header">
-                <span class="memory-date">${dateStr}</span>
-                <span class="draft-status">待确认</span>
-                <span class="memory-type">${typeStr}</span>
-              </div>
-              <div class="memory-title">${escHtml(title)}</div>
-              <div class="draft-files">文件：${escHtml(files)}</div>
-              ${enrichHtml}
-              <textarea class="summary-input" id="summary-${d.draftId}" placeholder="可补充摘要（可选）"></textarea>
-              <div class="draft-actions">
-                <button class="btn btn-confirm" onclick="confirmDraft('${d.draftId}')">确认</button>
-                <button class="btn btn-reject" onclick="rejectDraft('${d.draftId}')">跳过</button>
-              </div>
-            </div>
-          `
-        }
-        document.getElementById('pending-section').innerHTML = html
+        allDrafts = data.drafts || []
+        document.getElementById('pending-count').textContent = allDrafts.length
+        renderDrafts()
       } catch (e) {
         document.getElementById('pending-section').innerHTML = '<div class="empty">加载失败</div>'
       }
+    }
+
+    function renderDrafts() {
+      const drafts = filterDrafts(allDrafts)
+      if (drafts.length === 0) {
+        const msg = currentPendingFilter === 'all'
+          ? '没有待确认的草稿。上传照片或文件后会出现在这里。'
+          : '没有符合筛选条件的草稿。'
+        document.getElementById('pending-section').innerHTML = `<div class="empty">${msg}</div>`
+        return
+      }
+
+      let html = ''
+      for (const d of drafts) {
+        const title = d.inferredTitle || d.originalFilenames.join(', ')
+        const dateStr = d.inferredDate || '未知日期'
+        const typeStr = d.inferredType ? (TYPE_LABELS[d.inferredType] || d.inferredType) : '待识别'
+        const files = d.originalFilenames.join(', ')
+        const enriched = d.extractedFacts && d.extractedFacts.length > 0
+        const enrichHtml = enriched
+          ? `<div class="draft-enrichment">&#x2713; VLM 已识别：${d.extractedFacts.slice(0, 3).map(escHtml).join('、')}</div>`
+          : ''
+
+        html += `
+          <div class="draft-card" id="draft-${d.draftId}">
+            <div class="memory-header">
+              <span class="memory-date">${dateStr}</span>
+              <span class="draft-status">待确认</span>
+              <span class="memory-type">${typeStr}</span>
+            </div>
+            <div class="memory-title">${escHtml(title)}</div>
+            <div class="draft-files">文件：${escHtml(files)}</div>
+            ${enrichHtml}
+            <textarea class="summary-input" id="summary-${d.draftId}" placeholder="可补充摘要（可选）"></textarea>
+            <div class="draft-actions">
+              <button class="btn btn-confirm" onclick="confirmDraft('${d.draftId}')">确认</button>
+              <button class="btn btn-reject" onclick="rejectDraft('${d.draftId}')">跳过</button>
+            </div>
+          </div>
+        `
+      }
+      document.getElementById('pending-section').innerHTML = html
     }
 
     async function confirmDraft(draftId) {
@@ -520,8 +893,48 @@
       return div.innerHTML
     }
 
+    // --- v1.8: Trial tracker ---
+    async function loadTrialStats() {
+      try {
+        const res = await fetch('/api/trial')
+        const data = await res.json()
+        const panel = document.getElementById('trial-panel')
+        const grid = document.getElementById('trial-stats')
+        panel.style.display = 'block'
+
+        const s = data.summary
+        const t = data.today
+        grid.innerHTML = `
+          <span class="label">试用天数</span><span class="val">${data.totalDaysLogged} 天 (连续 ${s.streakDays})</span>
+          <span class="label">今日导入</span><span class="val">${t.assetsImported} 条</span>
+          <span class="label">今日确认</span><span class="val">${t.draftsConfirmed} 条</span>
+          <span class="label">待处理</span><span class="val">${t.pendingTotal} 条</span>
+          <span class="label">累计确认</span><span class="val">${s.totalConfirmed} 条</span>
+          <span class="label">OCR失败</span><span class="val">${s.totalOcrFailures} 条</span>
+          <span class="label">泄露检测</span><span class="val">${s.leakDetected ? '⚠ 检测到' : '无'}</span>
+        `
+      } catch (e) {
+        // trial endpoint not available, hide panel
+      }
+    }
+
+    async function recordTrialDay() {
+      try {
+        const res = await fetch('/api/trial/record', { method: 'POST' })
+        const data = await res.json()
+        if (data.ok) {
+          showToast(`已记录第 ${data.totalDays} 天试用数据`)
+          loadTrialStats()
+        }
+      } catch (e) {
+        showToast('记录失败')
+      }
+    }
+
+    loadDashboard()
     loadDrafts()
     loadMemories()
+    loadTrialStats()
   </script>
 </body>
 </html>

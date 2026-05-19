@@ -202,6 +202,25 @@ switch (command) {
     break
   }
 
+  case 'trial-report': {
+    const { printTrialReport, computeDailyMetrics, recordDailyMetrics } = await import('./trial.js')
+    printTrialReport()
+    if (process.argv[3] === '--record') {
+      const metrics = computeDailyMetrics()
+      recordDailyMetrics(metrics)
+      console.log(`  Day recorded to trial log.`)
+    }
+    break
+  }
+
+  case 'trial-record': {
+    const { computeDailyMetrics, recordDailyMetrics } = await import('./trial.js')
+    const metrics = computeDailyMetrics()
+    const log = recordDailyMetrics(metrics)
+    console.log(`Trial day ${metrics.date} recorded. (${log.days.length} total days)`)
+    break
+  }
+
   default:
     console.log(`Remi Family Memory CLI`)
     console.log()
@@ -215,6 +234,8 @@ switch (command) {
     console.log('  extract-ocr       Re-run OCR for pending drafts missing sidecars')
     console.log('  enrich-draft <id> Enrich a pending draft with local VLM (requires VLM_MODEL)')
     console.log('  enrich-drafts     Enrich all pending drafts with local VLM')
+    console.log('  trial-report      Show today\'s trial metrics (--record to save)')
+    console.log('  trial-record      Record today\'s metrics to trial log')
     console.log('  serve             Start the timeline web server')
     console.log('  dev               Scan + serve')
     console.log('  report [YYYY-MM]  Generate monthly report')

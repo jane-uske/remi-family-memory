@@ -99,6 +99,86 @@ export function checkStageGuardrail(text: string, stage?: CaptureStage): StageGu
   return { blocked: true, reason: 'post_birth_content_during_pregnancy', keywords: matched }
 }
 
+// --- Parent Quick Capture (owner-facing, direct from web UI) ---
+
+export type ParentCapturePayload = {
+  text: string
+  date?: string
+}
+
+export function writeParentCapture(payload: ParentCapturePayload): CaptureResult {
+  if (!payload.text || !payload.text.trim()) {
+    return { ok: false, error: 'not_confirmed', message: '缺少记录内容。' }
+  }
+
+  if (detectPrivacyBlock(payload.text)) {
+    return {
+      ok: false,
+      error: 'privacy_blocked',
+      message: '检测到私密内容标记，请通过本地管理方式手动添加为 blocked_from_ai。',
+    }
+  }
+
+  const guardrail = checkStageGuardrail(payload.text)
+  if (guardrail.blocked) {
+    return {
+      ok: false,
+      error: 'stage_guardrail',
+      message: `当前阶段为孕期，内容包含出生后里程碑关键词（${guardrail.keywords.join('、')}），请确认是否正确。`,
+    }
+  }
+
+  const noteId = nanoid()
+  const date = payload.date || new Date().toISOString().slice(0, 10)
+  const confirmedAt = new Date().toISOString()
+  const filename = `${date}-parent-${noteId}.md`
+  const inboxDir = path.join(dataDir(), 'inbox/notes')
+  const filePath = path.join(inboxDir, filename)
+
+  const title = payload.text.split(/[。！？\n]/)[0].slice(0, 50)
+
+  const content = [
+    '---',
+    `date: ${date}`,
+    'type: parent_note',
+    'source: parent_web',
+    `title: "${title}"`,
+    'confirmedByParent: true',
+    'capturedBy: parent',
+    'captureSource: review_page',
+    'captureStatus: captured_to_inbox',
+    `confirmedAt: "${confirmedAt}"`,
+    'reviewStatus: captured',
+    'sensitivity: normal',
+    '---',
+    '',
+    payload.text.trim(),
+    '',
+  ].join('\n')
+
+  try {
+    if (!existsSync(inboxDir)) {
+      mkdirSync(inboxDir, { recursive: true })
+    }
+    writeFileSync(filePath, content, 'utf-8')
+  } catch (e) {
+    return {
+      ok: false,
+      error: 'write_failed',
+      message: `写入失败: ${e instanceof Error ? e.message : String(e)}`,
+    }
+  }
+
+  const relativePath = path.relative(path.resolve('.'), filePath)
+  return {
+    ok: true,
+    noteId,
+    filePath: relativePath,
+    message: '已记录到家庭记忆，运行 npm run sync 后生成正式记忆。',
+    lifecycle: 'captured_to_inbox',
+  }
+}
+
 // --- Write Inbox Note ---
 
 export function writeInboxNote(payload: CapturePayload): CaptureResult {

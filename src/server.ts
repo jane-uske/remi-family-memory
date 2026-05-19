@@ -4,16 +4,18 @@ import { readFileSync, existsSync } from 'node:fs'
 import { dataDir } from './paths.js'
 import { listEvents, listAISafeEvents } from './store.js'
 import { loadProfile, getGestationalWeeks, getStage } from './profile.js'
-import { loadAttachments } from './attachments.js'
+import { loadAttachments, scanAssets } from './attachments.js'
 import { loadMemories, buildMemories } from './memory.js'
 import { generateContext } from './context.js'
 import { aiSearch } from './search.js'
 import { runDoctor } from './doctor.js'
+import { scanInbox } from './scanner.js'
 import { SCHEMA_VERSION } from './types.js'
 import { RemiMemoryAdapter } from './remi-adapter.js'
-import { writeInboxNote, checkStageGuardrail, getCurrentStage } from './capture.js'
+import { writeInboxNote, writeParentCapture, checkStageGuardrail, getCurrentStage } from './capture.js'
 import { loadPendingDrafts, confirmDraft, rejectDraft } from './drafts.js'
 import { enrichDraft, enrichPendingDrafts } from './draft_enrichment.js'
+import { computeDailyMetrics, recordDailyMetrics, getTrialSummary, loadTrialLog } from './trial.js'
 import { DraftCapability } from './draft-capability.js'
 import type { DraftSessionState } from './draft-capability.js'
 import type { Request, Response, NextFunction } from 'express'
@@ -102,6 +104,71 @@ export function startServer(port = 3456) {
     res.json({ total: memories.length, memories })
   })
 
+  app.get('/api/dashboard', (_req, res) => {
+    const drafts = loadPendingDrafts()
+    const memories = loadMemories()
+    const today = new Date().toISOString().slice(0, 10)
+
+    const pendingCount = drafts.length
+    const needsTitleCount = drafts.filter(d => !d.inferredTitle).length
+    const ocrErrorCount = drafts.filter(d => d.ocrStatus === 'error').length
+    const enrichedCount = drafts.filter(d => d.extractedFacts && d.extractedFacts.length > 0).length
+    const confirmedTodayCount = memories.filter(m => m.createdAt && m.createdAt.startsWith(today)).length
+
+    res.json({
+      today,
+      pending: {
+        total: pendingCount,
+        needsTitle: needsTitleCount,
+        ocrError: ocrErrorCount,
+        enriched: enrichedCount,
+        readyToConfirm: drafts.filter(d => d.inferredTitle && d.inferredDate).length,
+      },
+      confirmed: {
+        total: memories.length,
+        today: confirmedTodayCount,
+      },
+    })
+  })
+
+  app.post('/api/capture', (req, res) => {
+    const { text, date } = req.body || {}
+
+    if (!text || typeof text !== 'string' || !text.trim()) {
+      res.status(400).json({ ok: false, error: 'missing_text', message: '请输入记录内容。' })
+      return
+    }
+
+    const result = writeParentCapture({ text: text.trim(), date: typeof date === 'string' ? date : undefined })
+    if (!result.ok) {
+      const status = result.error === 'stage_guardrail' ? 409 : 400
+      res.status(status).json(result)
+      return
+    }
+    res.json(result)
+  })
+
+  app.post('/api/sync', (_req, res) => {
+    try {
+      const notes = scanInbox()
+      const assets = scanAssets()
+      const memResult = buildMemories()
+      generateContext()
+      const doctorResults = runDoctor()
+      const fails = doctorResults.filter(r => r.status === 'FAIL')
+
+      res.json({
+        ok: true,
+        scan: { notesAdded: notes.added, assetsAdded: assets.added },
+        memory: { total: memResult.total, created: memResult.created, updated: memResult.updated },
+        health: { pass: doctorResults.length - fails.length, fail: fails.length },
+        syncedAt: new Date().toISOString(),
+      })
+    } catch (e) {
+      res.status(500).json({ ok: false, error: String(e) })
+    }
+  })
+
   app.get('/api/drafts/pending', (_req, res) => {
     const drafts = loadPendingDrafts()
     res.json({ total: drafts.length, drafts })
@@ -135,6 +202,19 @@ export function startServer(port = 3456) {
       return
     }
     res.json(result)
+  })
+
+  app.get('/api/trial', (_req, res) => {
+    const metrics = computeDailyMetrics()
+    const summary = getTrialSummary()
+    const log = loadTrialLog()
+    res.json({ today: metrics, summary, totalDaysLogged: log.days.length })
+  })
+
+  app.post('/api/trial/record', (_req, res) => {
+    const metrics = computeDailyMetrics()
+    const log = recordDailyMetrics(metrics)
+    res.json({ ok: true, date: metrics.date, totalDays: log.days.length })
   })
 
   // ============================================================
@@ -408,6 +488,9 @@ export function startServer(port = 3456) {
     console.log(`    Rebuild:     POST /api/ai/rebuild`)
     console.log()
     console.log('  Owner API (no auth, web dashboard):')
+    console.log(`    Dashboard:   GET  /api/dashboard`)
+    console.log(`    Capture:     POST /api/capture`)
+    console.log(`    Sync:        POST /api/sync`)
     console.log(`    Events:      GET  /api/events`)
     console.log(`    Memories:    GET  /api/memories`)
     console.log(`    Drafts:      GET  /api/drafts/pending`)
