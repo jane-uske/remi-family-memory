@@ -177,6 +177,11 @@ switch (command) {
     break
   }
 
+  case 'vlm-smoke': {
+    const { } = await import('./vlm_smoke.js')
+    break
+  }
+
   case 'enrich-draft': {
     const draftId = process.argv[3]
     if (!draftId) {
@@ -232,6 +237,7 @@ switch (command) {
     console.log('  scan-assets       Scan assets inbox only')
     console.log('  intake-assets     Generate draft notes from unlinked attachments')
     console.log('  extract-ocr       Re-run OCR for pending drafts missing sidecars')
+    console.log('  vlm-smoke         Smoke test local VLM connection')
     console.log('  enrich-draft <id> Enrich a pending draft with local VLM (requires VLM_MODEL)')
     console.log('  enrich-drafts     Enrich all pending drafts with local VLM')
     console.log('  trial-report      Show today\'s trial metrics (--record to save)')
