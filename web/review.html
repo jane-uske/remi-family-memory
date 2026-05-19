@@ -667,7 +667,11 @@
         const res = await fetch('/api/sync', { method: 'POST' })
         const data = await res.json()
         if (data.ok) {
-          const msg = `已同步：${data.scan.notesAdded} 条新记录，${data.memory.created} 条新记忆`
+          const parts = []
+          if (data.intake && data.intake.draftsCreated > 0) parts.push(`${data.intake.draftsCreated} 个新草稿`)
+          if (data.scan.notesAdded > 0) parts.push(`${data.scan.notesAdded} 条新记录`)
+          if (data.memory.created > 0) parts.push(`${data.memory.created} 条新记忆`)
+          const msg = parts.length > 0 ? `已同步：${parts.join('，')}` : '已同步，无新变化'
           showToast(msg)
           loadDashboard()
           loadDrafts()

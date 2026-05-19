@@ -146,7 +146,7 @@ switch (command) {
   }
 
   case 'sync': {
-    const ok = runSync()
+    const ok = await runSync()
     if (!ok) process.exit(1)
     break
   }

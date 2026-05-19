@@ -15,6 +15,7 @@ import { RemiMemoryAdapter } from './remi-adapter.js'
 import { writeInboxNote, writeParentCapture, checkStageGuardrail, getCurrentStage } from './capture.js'
 import { loadPendingDrafts, confirmDraft, rejectDraft } from './drafts.js'
 import { enrichDraft, enrichPendingDrafts } from './draft_enrichment.js'
+import { intakeAssets } from './intake.js'
 import { computeDailyMetrics, recordDailyMetrics, getTrialSummary, loadTrialLog } from './trial.js'
 import { DraftCapability } from './draft-capability.js'
 import type { DraftSessionState } from './draft-capability.js'
@@ -148,10 +149,11 @@ export function startServer(port = 3456) {
     res.json(result)
   })
 
-  app.post('/api/sync', (_req, res) => {
+  app.post('/api/sync', async (_req, res) => {
     try {
       const notes = scanInbox()
       const assets = scanAssets()
+      const intake = await intakeAssets()
       const memResult = buildMemories()
       generateContext()
       const doctorResults = runDoctor()
@@ -160,6 +162,7 @@ export function startServer(port = 3456) {
       res.json({
         ok: true,
         scan: { notesAdded: notes.added, assetsAdded: assets.added },
+        intake: { draftsCreated: intake.draftsCreated, skipped: intake.skipped },
         memory: { total: memResult.total, created: memResult.created, updated: memResult.updated },
         health: { pass: doctorResults.length - fails.length, fail: fails.length },
         syncedAt: new Date().toISOString(),
