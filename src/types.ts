@@ -81,6 +81,7 @@ export type BabyEvent = {
   sensitivity: 'normal' | 'family_private' | 'medical' | 'blocked_from_ai'
 
   confirmedByParent: boolean
+  provenance?: EventProvenance
 
   createdAt: string
   updatedAt: string
@@ -151,6 +152,8 @@ export type MemoryRecord = {
     path?: string
   }[]
 
+  provenance?: MemoryProvenance
+
   createdAt: string
   updatedAt: string
 }
@@ -193,6 +196,29 @@ export type VlmExtractionMetadata = {
   attachmentId: string
   validationWarnings: string[]
   rawResponseLength: number
+}
+
+// --- Provenance (v1.3) ---
+
+export type EventProvenance = {
+  sourceType: 'remi_capture' | 'asset_intake' | 'folder_scan' | 'manual'
+  draftId?: string
+  originalFilenames?: string[]
+  ocrUsed: boolean
+  vlmUsed: boolean
+  vlmModel?: string
+  confirmedAt: string
+}
+
+export type MemoryProvenance = {
+  sourceType: 'remi_capture' | 'asset_intake' | 'folder_scan' | 'manual'
+  confidence: 'confirmed_by_parent'
+  draftId?: string
+  originalFilenames?: string[]
+  ocrAssisted: boolean
+  vlmAssisted: boolean
+  vlmModel?: string
+  confirmedAt: string
 }
 
 // --- Draft Note (Asset Intake) ---

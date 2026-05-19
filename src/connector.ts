@@ -1,4 +1,4 @@
-import type { MemoryRecord, MemoryImportance } from './types.js'
+import type { MemoryRecord, MemoryImportance, MemoryProvenance } from './types.js'
 import { createAdapter } from './adapters/index.js'
 import type { LLMAdapter, EvidencePayload, EvidencePayloadItem } from './adapters/index.js'
 import type { ResultSource } from './adapters/types.js'
@@ -49,6 +49,7 @@ export type GroundedAnswer = {
     title?: string
     path?: string
   }[]
+  provenanceNote?: string
   evidence: EvidencePack
   serviceStatus: ConnectorStatus
   resultSource?: ResultSource
@@ -257,6 +258,10 @@ export class RemiConnector {
       title: ref.title,
     }))
 
+    const provenanceNote = output.answerable
+      ? await this.buildProvenanceNote(sources.map((s) => s.memoryId).filter(Boolean) as string[])
+      : undefined
+
     return {
       question,
       answerable: output.answerable,
@@ -264,10 +269,27 @@ export class RemiConnector {
       confidence: output.confidence,
       reason: output.reason,
       sources,
+      provenanceNote,
       evidence,
       serviceStatus: this.status,
       resultSource: output.resultSource,
       generatedAt: now,
+    }
+  }
+
+  private async buildProvenanceNote(memoryIds: string[]): Promise<string | undefined> {
+    if (memoryIds.length === 0) return undefined
+
+    try {
+      const res = await fetch(`${this.baseUrl}/api/ai/memories`, { headers: this.headers() })
+      if (!res.ok) return undefined
+      const data = await res.json() as MemoriesResponse
+      const matched = data.memories.filter((m) => memoryIds.includes(m.memoryId))
+      if (matched.length === 0) return undefined
+
+      return formatProvenanceNote(matched.map((m) => m.provenance).filter(Boolean) as MemoryProvenance[])
+    } catch {
+      return undefined
     }
   }
 
@@ -444,4 +466,27 @@ function extractKeywords(question: string): string[] {
 
 function containsAny(text: string, keywords: string[]): boolean {
   return keywords.some((kw) => text.includes(kw.toLowerCase()))
+}
+
+export function formatProvenanceNote(provenances: MemoryProvenance[]): string | undefined {
+  if (provenances.length === 0) return undefined
+
+  const parts: string[] = []
+
+  const allConfirmed = provenances.every((p) => p.confidence === 'confirmed_by_parent')
+  if (allConfirmed) parts.push('已由家长确认')
+
+  const anyVlm = provenances.some((p) => p.vlmAssisted)
+  const anyOcr = provenances.some((p) => p.ocrAssisted)
+
+  if (anyVlm && anyOcr) {
+    parts.push('OCR + VLM 辅助整理')
+  } else if (anyVlm) {
+    parts.push('VLM 辅助整理')
+  } else if (anyOcr) {
+    parts.push('OCR 辅助提取')
+  }
+
+  if (parts.length === 0) return undefined
+  return `（${parts.join('，')}）`
 }

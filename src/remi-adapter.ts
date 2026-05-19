@@ -35,6 +35,7 @@ export type RemiMemoryResponse = {
   confidence: string
   reason: string
   sources: GroundedAnswer['sources']
+  provenanceNote?: string
   serviceStatus: ConnectorStatus
   resultSource?: ResultSource
 }
@@ -152,6 +153,7 @@ export class RemiMemoryAdapter {
       confidence: grounded.confidence,
       reason: grounded.reason,
       sources: grounded.sources,
+      provenanceNote: grounded.provenanceNote,
       serviceStatus: grounded.serviceStatus,
       resultSource: grounded.resultSource,
     }

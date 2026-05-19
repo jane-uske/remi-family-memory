@@ -127,6 +127,20 @@ export function confirmDraft(draftId: string, overrides?: DraftOverrides): Confi
     ? `\nfacts:\n${resolvedFacts.map((f) => `  - "${f.replace(/"/g, '\\"')}"`).join('\n')}`
     : ''
 
+  const ocrUsed = draft.ocrStatus === 'extracted' || draft.ocrStatus === 'partial'
+  const vlmUsed = !!draft.extractionMetadata
+  const vlmModel = draft.extractionMetadata?.model
+
+  const provenanceLines = [
+    'provenance:',
+    '  sourceType: asset_intake',
+    `  draftId: "${draftId}"`,
+    `  ocrUsed: ${ocrUsed}`,
+    `  vlmUsed: ${vlmUsed}`,
+    ...(vlmModel ? [`  vlmModel: "${vlmModel}"`] : []),
+    `  confirmedAt: "${confirmedAt}"`,
+  ]
+
   const content = [
     '---',
     `date: ${date}`,
@@ -143,6 +157,7 @@ export function confirmDraft(draftId: string, overrides?: DraftOverrides): Confi
     'sensitivity: normal',
     ...(tagsYaml ? [tagsYaml.trim()] : []),
     ...(factsYaml ? [factsYaml.trim()] : []),
+    ...provenanceLines,
     '---',
     '',
     summary || title,

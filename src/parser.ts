@@ -1,7 +1,7 @@
 import matter from 'gray-matter'
 import { nanoid } from 'nanoid'
 import { SCHEMA_VERSION } from './types.js'
-import type { BabyEvent, BabyEventType } from './types.js'
+import type { BabyEvent, BabyEventType, EventProvenance } from './types.js'
 
 const VALID_TYPES: Set<string> = new Set([
   'pregnancy_checkup',
@@ -76,6 +76,23 @@ export function parseMarkdownNote(
 
   const now = new Date().toISOString()
 
+  let provenance: EventProvenance | undefined
+  if (frontmatter.provenance && typeof frontmatter.provenance === 'object') {
+    const p = frontmatter.provenance as Record<string, unknown>
+    const sourceType = (['remi_capture', 'asset_intake', 'folder_scan', 'manual'].includes(p.sourceType as string))
+      ? p.sourceType as EventProvenance['sourceType']
+      : isAssetIntake ? 'asset_intake' : isRemiCapture ? 'remi_capture' : 'manual'
+    provenance = {
+      sourceType,
+      draftId: typeof p.draftId === 'string' ? p.draftId : undefined,
+      originalFilenames: Array.isArray(frontmatter.originalFilenames) ? frontmatter.originalFilenames : undefined,
+      ocrUsed: p.ocrUsed === true,
+      vlmUsed: p.vlmUsed === true,
+      vlmModel: typeof p.vlmModel === 'string' ? p.vlmModel : undefined,
+      confirmedAt: typeof p.confirmedAt === 'string' ? p.confirmedAt : now,
+    }
+  }
+
   return {
     id: nanoid(),
     childId,
@@ -91,6 +108,7 @@ export function parseMarkdownNote(
     tags,
     sensitivity,
     confirmedByParent,
+    provenance,
     createdAt: now,
     updatedAt: now,
   }

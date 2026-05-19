@@ -6,7 +6,7 @@ import { listEvents } from './store.js'
 import { loadProfile, getGestationalWeeks, getStage } from './profile.js'
 import { loadAttachments } from './attachments.js'
 import { SCHEMA_VERSION } from './types.js'
-import type { BabyEvent, BabyEventType, MemoryImportance, MemoryRecord } from './types.js'
+import type { BabyEvent, BabyEventType, MemoryImportance, MemoryRecord, MemoryProvenance } from './types.js'
 
 function memoryDir() { return path.join(dataDir(), 'memory') }
 function memoriesFile() { return path.join(memoryDir(), 'memories.json') }
@@ -93,6 +93,20 @@ function buildSummary(event: BabyEvent): string {
 function eventToMemory(event: BabyEvent): MemoryRecord {
   const now = new Date().toISOString()
 
+  let provenance: MemoryProvenance | undefined
+  if (event.provenance) {
+    provenance = {
+      sourceType: event.provenance.sourceType,
+      confidence: 'confirmed_by_parent',
+      draftId: event.provenance.draftId,
+      originalFilenames: event.provenance.originalFilenames,
+      ocrAssisted: event.provenance.ocrUsed,
+      vlmAssisted: event.provenance.vlmUsed,
+      vlmModel: event.provenance.vlmModel,
+      confirmedAt: event.provenance.confirmedAt,
+    }
+  }
+
   return {
     memoryId: nanoid(),
     sourceEventId: event.id,
@@ -111,6 +125,7 @@ function eventToMemory(event: BabyEvent): MemoryRecord {
       eventId: event.id,
       path: event.source.path,
     }],
+    provenance,
     createdAt: now,
     updatedAt: now,
   }
